@@ -51,8 +51,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.ReportPhoto
 import com.pashurakshak.app.ui.farmer.formatDateMillis
 import com.pashurakshak.app.ui.farmer.prettifyStatus
+import androidx.compose.foundation.layout.Box
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -209,9 +211,13 @@ fun CaseDetailScreen(
                             value = "%.4f, %.4f".format(report.latitude, report.longitude),
                         )
                         DetailRow("Captured", formatDateMillis(report.createdAt))
-                        DetailRow(
-                            label = "Photo",
-                            value = report.photoLocalPath.ifBlank { "No photo" },
+                    }
+
+                    // Photo
+                    DetailSection(title = "Photo") {
+                        ReportPhoto(
+                            report = report,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
 

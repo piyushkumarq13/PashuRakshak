@@ -1,8 +1,10 @@
 package com.pashurakshak.app.ui.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -31,6 +33,12 @@ fun FarmerBottomBar(navController: NavHostController) {
             onClick = { navController.navigateToFarmerTab(Screen.ReportSickAnimal.route) },
             icon = { Icon(Icons.Default.Warning, contentDescription = "Report") },
             label = { Text("Report") },
+        )
+        NavigationBarItem(
+            selected = currentRoute == Screen.MyReports.route,
+            onClick = { navController.navigateToFarmerTab(Screen.MyReports.route) },
+            icon = { Icon(Icons.Default.Receipt, contentDescription = "Reports") },
+            label = { Text("Reports") },
         )
         NavigationBarItem(
             selected = currentRoute == Screen.VaccinationStatus.route,

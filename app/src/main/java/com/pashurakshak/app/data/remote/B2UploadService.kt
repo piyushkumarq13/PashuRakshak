@@ -15,11 +15,16 @@ import java.security.MessageDigest
 
 /**
  * Uploads symptom-report photos to Backblaze B2 via the native API:
- * b2_authorize_account → b2_get_upload_url → b2_upload_file.
+ * b2_authorize_account → b2_list_buckets(accountId) → b2_get_upload_url → b2_upload_file.
  *
  * Credentials come from BuildConfig (local.properties) — never hardcoded.
  * Retry-on-failure uses exponential backoff (max 3 attempts); offline skips silently
- * so the Phase 7 sync queue can pick the photo up later.
+ * so the sync queue can pick the photo up later.
+ *
+ * The upload response contains `fileName` (not `fileUrl`), so the download URL is
+ * constructed as downloadUrl + "/file/" + bucketName + "/" + fileName.
+ * Bucket is private, so a cached download-authorization token is supplied when
+ * displaying images (see getDownloadAuthToken / withAuth).
  */
 class B2UploadService(
     private val reportRepository: ReportRepository,
@@ -34,6 +39,20 @@ class B2UploadService(
         /** No network (or missing local file) — left for the sync queue to retry later. */
         data object Skipped : UploadResult()
     }
+
+    /** Authorize result including downloadUrl and accountId needed for later steps. */
+    private data class Auth(
+        val apiUrl: String,
+        val downloadUrl: String,
+        val accountId: String,
+        val token: String,
+    )
+
+    private data class UploadTarget(val url: String, val token: String)
+
+    /** Cached download-authorization token for private-bucket image display. */
+    private var cachedDownloadToken: String? = null
+    private var cachedDownloadTokenExpiryMs: Long = 0
 
     /** Uploads one report's photo and writes the returned URL to photo_remote_url. */
     suspend fun uploadReportPhoto(report: SymptomReport): UploadResult {
@@ -59,7 +78,8 @@ class B2UploadService(
     }
 
     /**
-     * Walks the photo-upload queue (unsynced reports with a local photo and no remote URL).
+     * Walks the photo-upload queue (reports with a local photo and no remote URL,
+     * regardless of synced flag so retried failures eventually succeed).
      * Returns per-report outcomes; failures are not fatal so one bad photo doesn't block others.
      */
     suspend fun uploadPendingReportPhotos(): List<Pair<String, UploadResult>> {
@@ -79,15 +99,58 @@ class B2UploadService(
                     else -> "image/jpeg"
                 }
                 val auth = authorize()
-                val upload = getUploadUrl(auth.apiUrl, auth.token)
-                val fileUrl = postFile(upload.url, upload.token, remoteName, contentType, bytes)
+                val upload = getUploadUrl(auth)
+                val fileUrl = postFile(upload, remoteName, contentType, bytes, auth)
                 UploadResult.Success(fileUrl)
             }
         }
 
-    private data class Auth(val apiUrl: String, val token: String)
-    private data class UploadTarget(val url: String, val token: String)
+    /**
+     * Returns a full public-style download URL for the file.
+     * Because the bucket is private, callers should prefer [withAuth] when rendering images.
+     */
+    fun buildDownloadUrl(fileUrl: String): String = fileUrl
 
+    /**
+     * Returns a URL that can be used in an <img>/AsyncImage tag by appending a
+     * download-authorization token as a query parameter for private buckets.
+     * Caches the token for [TOKEN_CACHE_DURATION_MS].
+     */
+    suspend fun withAuth(fileUrl: String): String {
+        if (fileUrl.isBlank()) return fileUrl
+        val token = getDownloadAuthToken() ?: return fileUrl
+        return if (fileUrl.contains("Authorization=")) fileUrl else "$fileUrl?Authorization=$token"
+    }
+
+    /** Cached download-authorization token (scoped to the `reports/` prefix). */
+    private suspend fun getDownloadAuthToken(): String? = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        cachedDownloadToken?.let { if (now < cachedDownloadTokenExpiryMs) return@withContext it }
+        try {
+            val auth = authorize()
+            val token = requestDownloadAuth(auth)
+            cachedDownloadToken = token
+            cachedDownloadTokenExpiryMs = now + TOKEN_CACHE_DURATION_MS
+            token
+        } catch (_: Exception) { null }
+    }
+
+    private suspend fun requestDownloadAuth(auth: Auth): String = withContext(Dispatchers.IO) {
+        val connection = open("${auth.apiUrl}/b2api/v2/b2_get_download_authorization", "POST")
+        connection.setRequestProperty("Authorization", auth.token)
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+        val body = JSONObject()
+            .put("bucketId", resolveBucketId(auth))
+            .put("fileNamePrefix", "reports/")
+            .put("validDurationInSeconds", TOKEN_CACHE_DURATION_MS / 1000)
+            .toString()
+        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        val json = readJson(connection)
+        json.getString("authorizationToken")
+    }
+
+    /** Performs b2_authorize_account and returns apiUrl, downloadUrl, accountId, token. */
     private fun authorize(): Auth {
         val connection = open(
             "https://api.backblazeb2.com/b2api/v2/b2_authorize_account",
@@ -99,34 +162,29 @@ class B2UploadService(
         )
         connection.setRequestProperty("Authorization", "Basic $credentials")
         val json = readJson(connection)
-        val allowed = json.optJSONObject("allowed")
-        val buckets = allowed?.optJSONArray("buckets")
-        if (buckets != null && bucketName.isNotBlank()) {
-            for (i in 0 until buckets.length()) {
-                val bucket = buckets.getJSONObject(i)
-                if (bucket.optString("bucketName") == bucketName) {
-                    // Bucket id is looked up fresh on each upload via b2_get_upload_url.
-                    break
-                }
-            }
-        }
-        return Auth(json.getString("apiUrl"), json.getString("authorizationToken"))
+        return Auth(
+            apiUrl = json.getString("apiUrl"),
+            downloadUrl = json.getString("downloadUrl"),
+            accountId = json.getString("accountId"),
+            token = json.getString("authorizationToken"),
+        )
     }
 
-    private fun getUploadUrl(apiUrl: String, token: String): UploadTarget {
-        val connection = open("$apiUrl/b2api/v2/b2_get_upload_url", "POST")
-        connection.setRequestProperty("Authorization", token)
+    private fun getUploadUrl(auth: Auth): UploadTarget {
+        val bucketId = resolveBucketId(auth)
+        val connection = open("${auth.apiUrl}/b2api/v2/b2_get_upload_url", "POST")
+        connection.setRequestProperty("Authorization", auth.token)
         connection.setRequestProperty("Content-Type", "application/json")
         connection.doOutput = true
-        val bucketId = resolveBucketId(apiUrl, token)
         connection.outputStream.use { it.write(JSONObject().put("bucketId", bucketId).toString().toByteArray()) }
         val json = readJson(connection)
         return UploadTarget(json.getString("uploadUrl"), json.getString("authorizationToken"))
     }
 
-    private fun resolveBucketId(apiUrl: String, token: String): String {
-        val connection = open("$apiUrl/b2api/v2/b2_list_buckets", "GET")
-        connection.setRequestProperty("Authorization", token)
+    /** B2 list_buckets requires accountId as a query parameter. */
+    private fun resolveBucketId(auth: Auth): String {
+        val connection = open("${auth.apiUrl}/b2api/v2/b2_list_buckets?accountId=${auth.accountId}", "GET")
+        connection.setRequestProperty("Authorization", auth.token)
         val json = readJson(connection)
         val buckets = json.getJSONArray("buckets")
         for (i in 0 until buckets.length()) {
@@ -138,16 +196,26 @@ class B2UploadService(
         error("Bucket '$bucketName' not found for this application key")
     }
 
-    private fun postFile(uploadUrl: String, token: String, remoteName: String, contentType: String, bytes: ByteArray): String {
-        val connection = open(uploadUrl, "POST")
-        connection.setRequestProperty("Authorization", token)
+    /** B2 b2_upload_file returns `fileName` (not `fileUrl`), so build the download URL manually. */
+    private fun postFile(
+        uploadTarget: UploadTarget,
+        remoteName: String,
+        contentType: String,
+        bytes: ByteArray,
+        auth: Auth,
+    ): String {
+        val connection = open(uploadTarget.url, "POST")
+        connection.setRequestProperty("Authorization", uploadTarget.token)
         connection.setRequestProperty("Content-Type", contentType)
         connection.setRequestProperty("X-Bz-File-Name", urlEncodePath(remoteName))
         connection.setRequestProperty("X-Bz-Content-Sha1", sha1Hex(bytes))
         connection.doOutput = true
         connection.outputStream.use { it.write(bytes) }
         val json = readJson(connection)
-        return json.getString("fileUrl")
+        val fileName = json.getString("fileName")
+        val pathSegments = fileName.split("/")
+        val encodedPath = pathSegments.joinToString("/") { urlEncodePath(it) }
+        return "${auth.downloadUrl}/file/$bucketName/$encodedPath"
     }
 
     private fun open(rawUrl: String, method: String): HttpURLConnection {
@@ -206,20 +274,23 @@ class B2UploadService(
             .digest(bytes)
             .joinToString("") { "%02x".format(it) }
 
-    private fun urlEncodePath(path: String): String =
-        path.split("/")
-            .joinToString("/") { segment ->
-                segment.map { char ->
-                    if (char.isLetterOrDigit() || char in "-._~") char.toString()
-                    else "%02x".format(char.code)
-                }.joinToString("")
-            }
-
     private class B2HttpException(val code: Int, message: String) : IOException(message)
 
-    companion object {
+        companion object {
         const val MAX_ATTEMPTS = 3
         const val RETRY_BASE_DELAY_MS = 1_000L
+        private const val TOKEN_CACHE_DURATION_MS = 12 * 60 * 60 * 1000L // 12 hours
+
+        /** Percent-encode each path segment; letters/digits and -._~ are kept as-is. */
+        @JvmStatic
+        fun urlEncodePath(path: String): String =
+            path.split("/")
+                .joinToString("/") { segment ->
+                    segment.map { char ->
+                        if (char.isLetterOrDigit() || char in "-._~") char.toString()
+                        else "%${"%02x".format(char.code)}"
+                    }.joinToString("")
+                }
 
         /** Delay before retrying after the given 1-based attempt (1s, 2s, 4s...). */
         fun backoffDelayMs(attempt: Int): Long = RETRY_BASE_DELAY_MS shl (attempt - 1)
@@ -237,5 +308,10 @@ class B2UploadService(
                 message.contains("Failed to connect", ignoreCase = true) ||
                 message.contains("Connection refused", ignoreCase = true)
         }
+
+        /** Build a display URL (with authorization token) for a private-bucket image. */
+        @JvmStatic
+        fun buildFileUrl(downloadUrl: String, bucketName: String, fileName: String): String =
+            "$downloadUrl/file/$bucketName/$fileName"
     }
 }

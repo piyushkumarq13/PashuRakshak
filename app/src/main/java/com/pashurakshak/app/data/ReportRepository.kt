@@ -51,6 +51,13 @@ class ReportRepository(private val db: TursoClient) {
             animalId,
         ) { it.toReport() }
 
+    /** Reports for a specific farmer, newest first. */
+    suspend fun getByFarmer(farmerId: String): List<SymptomReport> =
+        db.query(
+            "SELECT * FROM symptom_reports WHERE farmer_id = ? ORDER BY created_at DESC",
+            farmerId,
+        ) { it.toReport() }
+
     /** Reports not yet pushed to the server — the offline sync queue (sync logic comes later). */
     suspend fun getUnsyncedReports(): List<SymptomReport> =
         db.query(

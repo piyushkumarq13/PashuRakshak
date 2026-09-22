@@ -27,6 +27,7 @@ import com.pashurakshak.app.ui.components.VetBottomBar
 import com.pashurakshak.app.ui.debug.B2UploadTestScreen
 import com.pashurakshak.app.ui.farmer.AlertsScreen
 import com.pashurakshak.app.ui.farmer.MyAnimalsScreen
+import com.pashurakshak.app.ui.farmer.MyReportsScreen
 import com.pashurakshak.app.ui.farmer.QrPassportScreen
 import com.pashurakshak.app.ui.farmer.ReportSickAnimalScreen
 import com.pashurakshak.app.ui.farmer.VaccinationStatusScreen
@@ -142,6 +143,7 @@ fun AppNavHost(
             // Farmer
             composable(Screen.FarmerHome.route) {
                 FarmerHomeScreen(
+                    onOpenMyReports = { navController.navigate(Screen.MyReports.route) },
                     onOpenB2Test = { navController.navigate(Screen.B2UploadTest.route) },
                     bottomBar = { FarmerBottomBar(navController) },
                 )
@@ -213,6 +215,11 @@ fun AppNavHost(
                     recipientRole = "vet",
                     recipientId = null,
                     bottomBar = { VetBottomBar(navController) },
+                )
+            }
+            composable(Screen.MyReports.route) {
+                MyReportsScreen(
+                    bottomBar = { FarmerBottomBar(navController) },
                 )
             }
             composable(Screen.B2UploadTest.route) {

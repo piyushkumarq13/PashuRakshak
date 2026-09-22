@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.messaging)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
 
