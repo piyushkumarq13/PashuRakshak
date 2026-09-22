@@ -1,0 +1,22 @@
+# Copy this file to local.properties and fill in real values.
+#
+# REMINDER: keep local.properties out of version control — confirm it is listed
+# in .gitignore ("/local.properties" already is in this repo). Never commit keys.
+
+## This file must *NOT* be checked into Version Control Systems,
+# as it contains information specific to your local configuration.
+
+# Location of the SDK. This is only used by Gradle.
+sdk.dir=C\:\\path\\to\\Android\\Sdk
+
+# Backblaze B2 credentials (app key with listBuckets + writeFiles on the target bucket).
+B2_APPLICATION_KEY_ID=
+B2_APPLICATION_KEY=
+# Bucket that receives symptom-report photos.
+B2_BUCKET_NAME=
+# Mirror the same three B2 values in shared-backend/.env (deploy docs).
+
+# shared-backend origin (no trailing slash) — used by ReportPushApi + device registration.
+API_BASE_URL=https://shared-backend.onrender.com
+# api_key from POST /api/v1/core/apps (shown once at registration).
+APP_API_KEY=

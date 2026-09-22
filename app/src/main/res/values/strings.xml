@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PashuRakshak</string>
+    <string name="notification_channel_alerts">Alerts</string>
+    <string name="notification_channel_alerts_description">Disease-risk and vaccination alerts for your animals</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- White cross on the green adaptive background (legacy full icon stays in drawable/). -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,28h14v19h19v14H61v19H47V61H28V47h19z" />
+</vector>

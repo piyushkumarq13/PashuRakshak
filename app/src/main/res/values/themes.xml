@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PashuRakshak" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.PashuRakshak.Main</item>
+    </style>
+
+    <!-- The actual app theme (Compose draws everything; keeps the platform edge-to-edge). -->
+    <style name="Theme.PashuRakshak.Main" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "214607902311",
+    "project_id": "pashurakshak-961c1",
+    "storage_bucket": "pashurakshak-961c1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:214607902311:android:8d589cc9ba6b10c417c6c2",
+        "android_client_info": {
+          "package_name": "com.pashurakshak.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBW3TXMBzJHTHkvYI593RL8yNfChuvdZF8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

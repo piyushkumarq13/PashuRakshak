@@ -1,0 +1,12 @@
+*.iml
+.gradle
+# Keeps local.properties (and any B2 keys inside it) out of version control.
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+.kotlin

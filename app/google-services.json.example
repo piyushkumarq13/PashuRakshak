@@ -1,0 +1,30 @@
+{
+  "_comment": "PLACEHOLDER — copy this file to app/google-services.json and replace every value with the one from your Firebase project (Project settings → Your apps → Android app, package name com.pashurakshak.app). The google-services Gradle plugin only applies when the real file exists. Also register your debug SHA-1/SHA-256 fingerprints for Phone Auth to work.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "your-firebase-project-id",
+    "storage_bucket": "your-firebase-project-id.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "com.pashurakshak.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "REPLACE_WITH_ANDROID_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
