@@ -45,6 +45,7 @@ class MyAnimalsViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.syncAll() }
             runCatching {
                 val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
                 val reportsByAnimal = reportRepository.getAll().groupBy { it.animalId }
@@ -68,14 +69,14 @@ class MyAnimalsViewModel(
     fun addAnimal(species: String, name: String) {
         viewModelScope.launch {
             runCatching {
-                animalRepository.insert(
-                    Animal(
-                        ownerFarmerId = farmerId,
-                        species = species,
-                        name = name.trim(),
-                        qrCodeId = "QR-" + UUID.randomUUID().toString().uppercase(),
-                    )
+                val animal = Animal(
+                    ownerFarmerId = farmerId,
+                    species = species,
+                    name = name.trim(),
+                    qrCodeId = "QR-" + UUID.randomUUID().toString().uppercase(),
                 )
+                animalRepository.insert(animal)
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pushAnimal(animal) }
             }.onSuccess {
                 refresh()
             }.onFailure { error ->

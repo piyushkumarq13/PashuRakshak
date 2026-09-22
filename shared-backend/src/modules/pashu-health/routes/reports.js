@@ -94,6 +94,21 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
   const synced = body.synced === false || body.synced === 0 ? 0 : 1;
 
   try {
+    // Farm animal may not exist on the server yet (app pushes animals separately).
+    // Create a placeholder so FK does not reject the report.
+    const animalRow = await db.execute({
+      sql: 'SELECT id FROM pashu_animals WHERE id = ?',
+      args: [animalId],
+    });
+    if (animalRow.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO pashu_animals
+            (id, owner_farmer_id, species, name, qr_code_id, created_at)
+          VALUES (?, ?, 'unknown', 'Unknown animal', ?, ?)`,
+        args: [animalId, farmerId, `QR-PENDING-${animalId}`, Date.now()],
+      });
+    }
+
     await db.execute({
       sql: `INSERT INTO pashu_symptom_reports (
           id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
@@ -103,8 +118,10 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
           animal_id = excluded.animal_id,
           farmer_id = excluded.farmer_id,
           symptoms = excluded.symptoms,
-          photo_local_path = excluded.photo_local_path,
-          photo_remote_url = excluded.photo_remote_url,
+          photo_local_path = CASE
+            WHEN excluded.photo_local_path != '' THEN excluded.photo_local_path
+            ELSE pashu_symptom_reports.photo_local_path END,
+          photo_remote_url = COALESCE(excluded.photo_remote_url, pashu_symptom_reports.photo_remote_url),
           latitude = excluded.latitude,
           longitude = excluded.longitude,
           risk_score = excluded.risk_score,

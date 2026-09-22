@@ -12,8 +12,7 @@ enum class ReportStatus(val dbValue: String) {
 
     companion object {
         fun fromDbValue(value: String): ReportStatus =
-            entries.firstOrNull { it.dbValue == value }
-                ?: error("Unknown report status: $value")
+            entries.firstOrNull { it.dbValue == value } ?: REPORTED
     }
 }
 

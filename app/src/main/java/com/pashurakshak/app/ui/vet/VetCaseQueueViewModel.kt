@@ -36,6 +36,8 @@ class VetCaseQueueViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
+            // Pull latest from backend first (best-effort) so the queue is multi-device.
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
             runCatching {
                 val animalsById = animalRepository.getAll().associateBy { it.id }
                 reportRepository.getAll()

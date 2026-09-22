@@ -25,6 +25,10 @@ class PashuRakshakApplication : Application() {
         SyncScheduler.triggerNow(this)
         NetworkReconnectObserver.register(this)
         runDatabaseSmokeCheck()
+        // Push local queue + pull remote data so every screen starts from the cloud.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.syncAll() }
+        }
     }
 
     // TEMPORARY: exercises schema + repositories at startup; remove once features consume the data layer.

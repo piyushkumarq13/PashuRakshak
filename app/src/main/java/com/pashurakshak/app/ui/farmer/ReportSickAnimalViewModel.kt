@@ -10,6 +10,8 @@ import com.pashurakshak.app.data.local.Alert
 import com.pashurakshak.app.data.local.Animal
 import com.pashurakshak.app.data.local.ReportStatus
 import com.pashurakshak.app.data.local.SymptomReport
+import com.pashurakshak.app.data.sync.SyncScheduler
+import com.pashurakshak.app.di.ServiceLocator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,6 +77,7 @@ class ReportSickAnimalViewModel(
 
     fun loadAnimals() {
         viewModelScope.launch {
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
             runCatching {
                 animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
             }.onSuccess { animals ->
@@ -163,25 +166,29 @@ class ReportSickAnimalViewModel(
                         synced = false,
                     )
                 )
-                alertRepository.insert(
-                    Alert(
-                        recipientRole = "farmer",
-                        recipientId = farmerId,
-                        message = "Report submitted for $animalLabel (risk $riskScore). " +
-                            "A vet will review it.",
-                    ),
-                )
-                // Placeholder HIGH threshold — matches RiskLevel.kt (>= 60), refined server-side later.
-                if (riskScore >= 60) {
+                // Alerts are best-effort — a failed alert must not fail the report itself.
+                runCatching {
                     alertRepository.insert(
                         Alert(
-                            recipientRole = "vet",
-                            recipientId = SessionManager.vetId,
-                            message = "New high-risk case: $animalLabel — risk score $riskScore.",
+                            recipientRole = "farmer",
+                            recipientId = farmerId,
+                            message = "Report submitted for $animalLabel (risk $riskScore). " +
+                                "A vet will review it.",
                         ),
                     )
+                    // Placeholder HIGH threshold — matches RiskLevel.kt (>= 60).
+                    if (riskScore >= 60) {
+                        alertRepository.insert(
+                            Alert(
+                                recipientRole = "vet",
+                                recipientId = SessionManager.vetId,
+                                message = "New high-risk case: $animalLabel — risk score $riskScore.",
+                            ),
+                        )
+                    }
                 }
             }.onSuccess {
+                SyncScheduler.triggerNow(ServiceLocator.context)
                 _uiState.update { it.copy(isSubmitting = false, submitted = true) }
             }.onFailure { error ->
                 _uiState.update {

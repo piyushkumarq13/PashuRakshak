@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -33,6 +32,9 @@ import com.pashurakshak.app.ui.farmer.ReportSickAnimalScreen
 import com.pashurakshak.app.ui.farmer.VaccinationStatusScreen
 import com.pashurakshak.app.ui.vet.CaseDetailScreen
 import com.pashurakshak.app.ui.vet.VetCaseQueueScreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 
 @Composable
@@ -49,7 +51,6 @@ fun AppNavHost(
             null -> Screen.PhoneEntry.route
         }
     }
-    val scope = rememberCoroutineScope()
 
     // Notification tap → Alerts screen (farmer or vet variant).
     LaunchedEffect(pendingDestination) {
@@ -118,7 +119,10 @@ fun AppNavHost(
                         val uid = SessionManager.uid.orEmpty()
                         val phone = SessionManager.phone.orEmpty()
                         if (uid.isNotEmpty()) {
-                            scope.launch {
+                            // Application-scoped so navigation can't cancel the registration.
+                            GlobalScope.launch(
+                                Dispatchers.IO + NonCancellable,
+                            ) {
                                 runCatching {
                                     ServiceLocator.authRepository.saveRoleMapping(uid, phone, role)
                                 }

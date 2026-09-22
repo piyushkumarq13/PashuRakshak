@@ -48,6 +48,14 @@ class VaccinationRepository(private val db: TursoClient) {
         db.execute("DELETE FROM vaccinations WHERE id = ?", id)
     }
 
+    /** Insert-if-missing (remote pull). */
+    suspend fun insertIfAbsent(vaccination: Vaccination) {
+        val exists = db.query("SELECT id FROM vaccinations WHERE id = ?", vaccination.id) { it[0] }.isNotEmpty()
+        if (!exists) {
+            runCatching { insert(vaccination) }
+        }
+    }
+
     // Column order must match the vaccinations CREATE TABLE order (SELECT *).
     private fun Row.toVaccination() = Vaccination(
         id = string(0),

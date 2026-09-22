@@ -47,6 +47,14 @@ class AnimalRepository(private val db: TursoClient) {
         db.execute("DELETE FROM animals WHERE id = ?", id)
     }
 
+    /** Insert-if-missing (remote pull). */
+    suspend fun insertIfAbsent(animal: Animal) {
+        val exists = db.query("SELECT id FROM animals WHERE id = ?", animal.id) { it[0] }.isNotEmpty()
+        if (!exists) {
+            runCatching { insert(animal) }
+        }
+    }
+
     // Column order must match the animals CREATE TABLE order (SELECT *).
     private fun Row.toAnimal() = Animal(
         id = string(0),

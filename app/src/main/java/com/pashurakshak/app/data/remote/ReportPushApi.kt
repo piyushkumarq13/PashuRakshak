@@ -68,10 +68,12 @@ class ReportPushApi(
             put("animal_id", report.animalId)
             put("farmer_id", report.farmerId)
             put("symptoms", org.json.JSONArray(report.symptoms))
+            put("photo_local_path", report.photoLocalPath)
             put("photo_remote_url", report.photoRemoteUrl ?: JSONObject.NULL)
             put("latitude", report.latitude)
             put("longitude", report.longitude)
             put("risk_score", report.riskScore)
+            put("risk_breakdown", JSONObject(report.riskBreakdown).toString())
             put("status", report.status.dbValue)
             put("created_at", report.createdAt)
         }

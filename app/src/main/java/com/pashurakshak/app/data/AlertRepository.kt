@@ -11,7 +11,7 @@ class AlertRepository(private val db: TursoClient) {
 
     suspend fun insert(alert: Alert) {
         db.execute(
-            "INSERT INTO alerts (id, recipient_role, recipient_id, message, read, created_at) " +
+            "INSERT OR IGNORE INTO alerts (id, recipient_role, recipient_id, message, read, created_at) " +
                 "VALUES (?, ?, ?, ?, ?, ?)",
             alert.id,
             alert.recipientRole,
@@ -61,6 +61,14 @@ class AlertRepository(private val db: TursoClient) {
 
     suspend fun delete(id: String) {
         db.execute("DELETE FROM alerts WHERE id = ?", id)
+    }
+
+    /** Insert-if-missing (remote pull). */
+    suspend fun insertIfAbsent(alert: Alert) {
+        val exists = db.query("SELECT id FROM alerts WHERE id = ?", alert.id) { it[0] }.isNotEmpty()
+        if (!exists) {
+            runCatching { insert(alert) }
+        }
     }
 
     // Column order must match the alerts CREATE TABLE order (SELECT *).

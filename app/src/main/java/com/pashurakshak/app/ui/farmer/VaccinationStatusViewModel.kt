@@ -48,6 +48,7 @@ class VaccinationStatusViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
             runCatching {
                 val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
                 animals.map { animal ->
@@ -72,14 +73,14 @@ class VaccinationStatusViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, error = null) }
             runCatching {
-                vaccinationRepository.insert(
-                    Vaccination(
-                        animalId = animalId,
-                        vaccineName = vaccineName,
-                        dateGiven = dateGiven,
-                        nextDue = nextDue,
-                    )
+                val vaccination = Vaccination(
+                    animalId = animalId,
+                    vaccineName = vaccineName,
+                    dateGiven = dateGiven,
+                    nextDue = nextDue,
                 )
+                vaccinationRepository.insert(vaccination)
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pushVaccination(vaccination) }
                 val animalLabel = animalRepository.getById(animalId)?.let { "${it.name} (${it.species})" }
                     ?: "animal"
                 alertRepository.insert(

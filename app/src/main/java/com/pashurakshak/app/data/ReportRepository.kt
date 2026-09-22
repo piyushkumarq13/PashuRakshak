@@ -100,6 +100,23 @@ class ReportRepository(private val db: TursoClient) {
         db.execute("DELETE FROM symptom_reports WHERE id = ?", id)
     }
 
+    /** Upsert from remote pull — keeps local photo path if the row already exists. */
+    suspend fun upsertFromRemote(report: SymptomReport) {
+        val existing = getById(report.id)
+        if (existing == null) {
+            insert(report)
+        } else {
+            update(
+                report.copy(
+                    photoLocalPath = existing.photoLocalPath
+                        .ifBlank { report.photoLocalPath },
+                    photoRemoteUrl = report.photoRemoteUrl
+                        ?: existing.photoRemoteUrl,
+                ),
+            )
+        }
+    }
+
     // Column order must match the symptom_reports CREATE TABLE order (SELECT *).
     private fun Row.toReport() = SymptomReport(
         id = string(0),

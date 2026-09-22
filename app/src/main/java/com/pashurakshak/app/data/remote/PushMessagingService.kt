@@ -4,6 +4,9 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.pashurakshak.app.notifications.AppNotifications
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 /**
  * Receives FCM push messages and shows a local notification.
@@ -27,9 +30,16 @@ class PushMessagingService : FirebaseMessagingService() {
     }
 
     override fun onNewToken(token: String) {
-        // TODO(backend): register the device token against the farmer/vet account
-        // so the server can target this device. Stored nowhere yet on purpose.
-        Log.d(TAG, "FCM token refreshed (not yet registered with backend)")
+        Log.d(TAG, "FCM token refreshed — re-registering with backend")
+        if (com.pashurakshak.app.data.SessionManager.role == null) return
+        val role = com.pashurakshak.app.data.SessionManager.role ?: return
+        // Best-effort re-registration so cluster pushes keep working after token rotation.
+        GlobalScope.launch(Dispatchers.IO) {
+            runCatching {
+                com.pashurakshak.app.di.ServiceLocator.authRepository
+                    .registerDeviceTokenPublic(role)
+            }
+        }
     }
 
     private companion object {

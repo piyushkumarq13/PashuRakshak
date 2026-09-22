@@ -37,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,12 +79,29 @@ fun ReportSickAnimalScreen(
 
     var animalPickerExpanded by remember { mutableStateOf(false) }
     var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
+    // Bumped after a denied permission so the pending path is cleared for the next tap.
+    var cameraAttempt by remember { mutableIntStateOf(0) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
     ) { success ->
-        if (success) {
-            pendingPhotoPath?.let(viewModel::onPhotoSelected)
+        val path = pendingPhotoPath
+        if (success && path != null) {
+            viewModel.onPhotoSelected(path)
+        } else {
+            pendingPhotoPath = null
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            launchCamera(context, pendingPhotoPath, cameraLauncher)
+        } else {
+            pendingPhotoPath = null
+            cameraAttempt++
+            viewModel.onLocationError("Camera permission denied — photo skipped")
         }
     }
 
@@ -200,13 +218,17 @@ fun ReportSickAnimalScreen(
                         onClick = {
                             val photosDir = File(context.filesDir, "photos").apply { mkdirs() }
                             val file = File(photosDir, "report_${System.currentTimeMillis()}.jpg")
+                            runCatching { file.createNewFile() }
                             pendingPhotoPath = file.absolutePath
-                            val uri = FileProvider.getUriForFile(
+                            val granted = ContextCompat.checkSelfPermission(
                                 context,
-                                "${context.packageName}.fileprovider",
-                                file,
-                            )
-                            cameraLauncher.launch(uri)
+                                Manifest.permission.CAMERA,
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (granted) {
+                                launchCamera(context, pendingPhotoPath, cameraLauncher)
+                            } else {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
                         },
                     ) {
                         Icon(Icons.Default.PhotoCamera, contentDescription = null)
@@ -292,6 +314,23 @@ fun ReportSickAnimalScreen(
                 }
             }
         }
+    }
+}
+
+private fun launchCamera(
+    context: android.content.Context,
+    path: String?,
+    launcher: androidx.activity.result.ActivityResultLauncher<android.net.Uri>,
+) {
+    if (path.isNullOrBlank()) return
+    try {
+        val file = File(path)
+        file.parentFile?.mkdirs()
+        if (!file.exists()) file.createNewFile()
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        launcher.launch(uri)
+    } catch (error: Exception) {
+        android.util.Log.e("ReportSickAnimal", "Camera launch failed", error)
     }
 }
 

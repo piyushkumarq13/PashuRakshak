@@ -33,6 +33,7 @@ class AlertsViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
             runCatching {
                 if (recipientId == null) {
                     alertRepository.getForRole(recipientRole)

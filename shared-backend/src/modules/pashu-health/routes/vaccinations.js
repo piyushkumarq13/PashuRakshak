@@ -34,6 +34,16 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const animalRow = await db.execute({
+      sql: 'SELECT id FROM pashu_animals WHERE id = ?',
+      args: [animalId],
+    });
+    if (animalRow.rows.length === 0) {
+      return res.status(409).json({
+        error: 'animal_not_found',
+        message: 'Create the animal before recording a vaccination.',
+      });
+    }
     await db.execute({
       sql: `INSERT INTO pashu_vaccinations (id, animal_id, vaccine_name, date_given, next_due)
         VALUES (?, ?, ?, ?, ?)

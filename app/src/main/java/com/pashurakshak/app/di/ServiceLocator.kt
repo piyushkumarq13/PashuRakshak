@@ -14,11 +14,17 @@ import com.pashurakshak.app.data.remote.ReportPushApi
 object ServiceLocator {
 
     private lateinit var database: TursoClient
+    private lateinit var appContext: Context
 
     fun initialize(context: Context) {
+        appContext = context.applicationContext
         if (::database.isInitialized) return
         database = TursoClient(context.applicationContext)
     }
+
+    /** Application context for WorkManager triggers / background sync from ViewModels. */
+    val context: Context
+        get() = appContext
 
     val animalRepository: AnimalRepository by lazy { AnimalRepository(database) }
     val reportRepository: ReportRepository by lazy { ReportRepository(database) }

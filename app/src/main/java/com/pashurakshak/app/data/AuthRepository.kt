@@ -134,6 +134,9 @@ class AuthRepository(private val db: TursoClient) {
         registerDeviceToken(role)
     }
 
+    /** Public entry for FCM token rotation (PushMessagingService.onNewToken). */
+    suspend fun registerDeviceTokenPublic(role: SessionManager.Role) = registerDeviceToken(role)
+
     /**
      * POSTs the FCM token to shared-backend /api/v1/core/devices (app key + Firebase
      * ID token) so the server can push cluster alerts to this device. Never throws —

@@ -47,6 +47,7 @@ class CaseDetailViewModel(
     private fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
             runCatching {
                 val report = reportRepository.getById(reportId) ?: error("Report not found")
                 val animal = animalRepository.getById(report.animalId)
@@ -70,7 +71,8 @@ class CaseDetailViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmittingFieldCheck = true) }
             runCatching {
-                reportRepository.update(report.copy(status = newStatus))
+                // synced=0 so SyncWorker re-pushes the status change to the backend.
+                reportRepository.update(report.copy(status = newStatus, synced = false))
                 val animalLabel = _uiState.value.animal?.let { "${it.name} (${it.species})" }
                     ?: "Animal ${report.animalId.take(8)}"
                 val statusLabel = prettifyStatus(newStatus.dbValue)
@@ -101,7 +103,7 @@ class CaseDetailViewModel(
                 _uiState.update {
                     it.copy(
                         isSubmittingFieldCheck = false,
-                        notice = error.message ?: "Failed to update status",
+                        error = error.message ?: "Failed to update status",
                     )
                 }
             }

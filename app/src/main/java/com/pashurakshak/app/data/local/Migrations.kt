@@ -13,7 +13,7 @@ object Migrations {
     )
 
     private const val FARMERS_TABLE = """
-        CREATE TABLE farmers (
+        CREATE TABLE IF NOT EXISTS farmers (
             id TEXT PRIMARY KEY NOT NULL,
             phone TEXT NOT NULL,
             created_at INTEGER NOT NULL
@@ -21,7 +21,7 @@ object Migrations {
     """
 
     private const val INITIAL_SCHEMA = """
-        CREATE TABLE animals (
+        CREATE TABLE IF NOT EXISTS animals (
             id TEXT PRIMARY KEY NOT NULL,
             owner_farmer_id TEXT NOT NULL,
             species TEXT NOT NULL,
@@ -29,14 +29,14 @@ object Migrations {
             qr_code_id TEXT NOT NULL UNIQUE,
             created_at INTEGER NOT NULL
         );
-        CREATE TABLE vaccinations (
+        CREATE TABLE IF NOT EXISTS vaccinations (
             id TEXT PRIMARY KEY NOT NULL,
             animal_id TEXT NOT NULL REFERENCES animals(id),
             vaccine_name TEXT NOT NULL,
             date_given INTEGER NOT NULL,
             next_due INTEGER NOT NULL
         );
-        CREATE TABLE symptom_reports (
+        CREATE TABLE IF NOT EXISTS symptom_reports (
             id TEXT PRIMARY KEY NOT NULL,
             animal_id TEXT NOT NULL REFERENCES animals(id),
             farmer_id TEXT NOT NULL,
@@ -51,13 +51,13 @@ object Migrations {
             synced INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL
         );
-        CREATE TABLE vets (
+        CREATE TABLE IF NOT EXISTS vets (
             id TEXT PRIMARY KEY NOT NULL,
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
             assigned_village TEXT NOT NULL
         );
-        CREATE TABLE alerts (
+        CREATE TABLE IF NOT EXISTS alerts (
             id TEXT PRIMARY KEY NOT NULL,
             recipient_role TEXT NOT NULL,
             recipient_id TEXT NOT NULL,

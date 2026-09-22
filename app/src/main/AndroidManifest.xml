@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Runtime-requested on API 33+ so FCM notifications are shown. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Take photo when reporting a sick animal (also merged in by zxing; declared explicitly). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:name=".PashuRakshakApplication"
