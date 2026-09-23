@@ -4,7 +4,7 @@ composeBom = "2026.09.00"
 # Matches the Kotlin version bundled with AGP 9.4.1 (built-in Kotlin).
 composeCompiler = "2.2.10"
 activityCompose = "1.13.0"
-navigationCompose = "2.10.1"
+navigationCompose = "2.8.5"
 lifecycleViewmodelCompose = "2.11.0"
 coroutines = "1.11.0"
 libsql = "0.1.2"
@@ -35,12 +35,12 @@ zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embe
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
-firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "composeCompiler" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

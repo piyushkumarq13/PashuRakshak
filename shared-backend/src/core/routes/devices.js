@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { db } from '../../db/client.js';
 import { verifyAppKey } from '../middleware/verifyAppKey.js';
-import { verifyFirebaseToken } from '../middleware/verifyFirebaseToken.js';
+import { verifySession } from '../middleware/verifySession.js';
 
 const router = Router();
 
@@ -15,12 +15,12 @@ function str(value) {
 /**
  * POST /api/v1/core/devices
  * Generic device-token registration — requires BOTH an app key (which app)
- * and a Firebase ID token (which user). Upserts into device_tokens keyed by
- * (app_id, uid, role).
+ * and a session token (which user). Upserts into device_tokens keyed by
+ * (app_id, uid, role) where uid = users.id.
  *
  * Body: { role: string, fcmToken: string }
  */
-router.post('/devices', verifyAppKey, verifyFirebaseToken, async (req, res) => {
+router.post('/devices', verifyAppKey, verifySession, async (req, res) => {
   const role = str(req.body?.role);
   const fcmToken = str(req.body?.fcmToken);
 
@@ -32,7 +32,14 @@ router.post('/devices', verifyAppKey, verifyFirebaseToken, async (req, res) => {
   }
 
   const appId = req.appId;
-  const uid = req.uid;
+  const uid = req.userId;
+
+  if (!uid) {
+    return res.status(403).json({
+      error: 'forbidden',
+      message: 'Device registration requires a farmer or vet session.',
+    });
+  }
 
   try {
     const existing = await db.execute({

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
-import { verifyFirebaseToken } from '../../../core/middleware/verifyFirebaseToken.js';
+import { verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -18,12 +18,10 @@ function num(value, fallback = null) {
 
 /**
  * POST /api/v1/pashu-health/farmer-profiles
- * Protected by verifyAppKey (router-level) + verifyFirebaseToken.
- * Looks up the user by req.uid (via users.firebase_uid), upserts into
- * pashu_farmer_profiles keyed by that user's id.
+ * Protected by verifyAppKey (router-level) + verifySession.
+ * Upserts into pashu_farmer_profiles keyed by the session user's id.
  */
-router.post('/', verifyFirebaseToken, async (req, res) => {
-  const uid = req.uid;
+router.post('/', verifySession, async (req, res) => {
   const animalCount = num(req.body?.animalCount) ?? num(req.body?.animal_count);
   const village = str(req.body?.village);
   const pincode = str(req.body?.pincode);
@@ -37,8 +35,8 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
 
   try {
     const userResult = await db.execute({
-      sql: 'SELECT id FROM users WHERE firebase_uid = ?',
-      args: [uid],
+      sql: 'SELECT id FROM users WHERE id = ?',
+      args: [req.userId],
     });
 
     if (userResult.rows.length === 0) {
@@ -84,16 +82,14 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
 
 /**
  * GET /api/v1/pashu-health/farmer-profiles/me
- * Protected by verifyAppKey + verifyFirebaseToken.
+ * Protected by verifyAppKey + verifySession.
  * Returns the current farmer's profile or 404.
  */
-router.get('/me', verifyFirebaseToken, async (req, res) => {
-  const uid = req.uid;
-
+router.get('/me', verifySession, async (req, res) => {
   try {
     const userResult = await db.execute({
-      sql: 'SELECT id FROM users WHERE firebase_uid = ?',
-      args: [uid],
+      sql: 'SELECT id FROM users WHERE id = ?',
+      args: [req.userId],
     });
 
     if (userResult.rows.length === 0) {

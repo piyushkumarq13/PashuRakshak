@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { fetchPincodeOffices } from '../services/pincode.js';
 
 const router = Router();
 
@@ -18,36 +19,16 @@ router.get('/:code', async (req, res) => {
   }
 
   try {
-    const url = `https://api.postalpincode.in/pincode/${code}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const result = await fetchPincodeOffices(code);
 
-    if (!Array.isArray(data) || data.length === 0) {
+    if (!result) {
       return res.status(404).json({
         error: 'pincode_not_found',
         message: `No post offices found for pincode ${code}.`,
       });
     }
 
-    const firstRecord = data[0];
-    if (firstRecord.Status === 'Error' || !firstRecord.PostOffice || firstRecord.PostOffice.length === 0) {
-      return res.status(404).json({
-        error: 'pincode_not_found',
-        message: `No post offices found for pincode ${code}.`,
-      });
-    }
-
-    const offices = firstRecord.PostOffice.map((office) => ({
-      name: office.Name,
-      branchType: office.BranchType,
-      deliveryStatus: office.DeliveryStatus,
-      district: office.District,
-      state: office.State,
-      areaName: office.AreaName,
-      pincode: office.Pincode,
-    }));
-
-    return res.status(200).json({ pincode: code, offices });
+    return res.status(200).json({ pincode: result.pincode, offices: result.offices });
   } catch (error) {
     console.error('[core/pincode] fetch failed:', error);
     return res.status(500).json({

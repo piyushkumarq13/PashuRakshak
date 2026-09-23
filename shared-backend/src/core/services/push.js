@@ -1,6 +1,6 @@
 import { getMessaging } from 'firebase-admin/messaging';
 import { db } from '../../db/client.js';
-import { ensureFirebase } from '../middleware/verifyFirebaseToken.js';
+import { ensureFirebase } from './firebaseAdmin.js';
 
 /**
  * Generic push helpers (core — reusable by any module).

@@ -1,21 +1,26 @@
 # Vet Registration
 
-A standalone React (Vite) web app for veterinarians to register on PashuRakshak.
+A standalone React (Vite) web app where veterinarians register, verify their
+email with an OTP, set a 6-digit PIN or password, submit their application,
+and track approval status — all against the **existing** `shared-backend`
+(no Firebase Auth; OTPs come from the backend via Gmail SMTP).
 
-It calls the **existing** `shared-backend` API only — no new backend, no new database.
+## Flow
 
-## What it does
+1. **Sign in / register** — phone + email → backend emails a 6-digit OTP.
+2. **Verify OTP** → **set credential** (6-digit PIN or password).
+3. **Application** — professional details + pincode → server resolves district
+   → **coverage-area multi-select** → submitted to that District Magistrate.
+4. **Status page** — pending / approved / rejected (with reviewer note;
+   rejected apps can be edited and resubmitted).
 
-1. **Phone auth** — Firebase Phone Auth (OTP) using the same Firebase project as the Android app (`pashurakshak-961c1`).
-2. **Landing check** — after OTP, calls `GET /api/v1/core/users/me`.
-   - **404** → shows registration form (name, email, pincode → fetch areas → checkbox select → `POST /core/users` + `POST /pashu-health/vet-profiles`).
-   - **200** → shows profile page pre-filled from `GET /pashu-health/vet-profiles/me`, editable, saves via `PUT /core/users/me` + `POST /pashu-health/vet-profiles` (upsert).
+Returning vets sign in with phone + PIN/password; while `pending`/`rejected`
+they see the status page, once `approved` they can log in to the Vet App.
 
 ## Prerequisites
 
 - Node.js 18+
-- The `shared-backend` running (see its README)
-- A Firebase **Web app** registered in the Firebase console for project `pashurakshak-961c1`
+- `shared-backend` running (see its README)
 
 ## Setup
 
@@ -28,41 +33,27 @@ curl -X POST http://localhost:3000/api/v1/core/apps \
   -d '{"name":"Vet Registration Web"}'
 ```
 
-The response contains `apiKey` — **store it now, it is shown only once**.
+Response contains `apiKey` — **shown once only**.
 
-### 2. Get Firebase Web config
-
-Firebase console → **Project Settings** → **Your apps** → **Web** (`</>` icon).
-
-Copy the config values (apiKey, appId, etc.).
-
-### 3. Configure environment
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in:
-
 | Variable | Value |
 |---|---|
-| `VITE_API_BASE_URL` | `http://localhost:3000` (dev) or your deployed backend URL |
+| `VITE_API_BASE_URL` | `http://localhost:3000` (dev) or deployed backend URL |
 | `VITE_APP_API_KEY` | The `apiKey` from step 1 |
-| `VITE_FIREBASE_API_KEY` | From Firebase console web config |
-| `VITE_FIREBASE_APP_ID` | From Firebase console web config |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `pashurakshak-961c1.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | `pashurakshak-961c1` |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `pashurakshak-961c1.firebasestorage.app` |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `214607902311` |
 
-### 4. Run
+### 3. Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Opens at `http://localhost:5173` (already allow-listed in backend CORS).
+Opens at `http://localhost:5173` (allow-listed in backend CORS).
 
 ## Build
 
@@ -74,43 +65,12 @@ Outputs to `dist/`.
 
 ## Deploy
 
-### Vercel (free)
+Same as any Vite static site (Vercel / Netlify / Render):
 
-```bash
-npm i -g vercel
-vercel
-```
-
-- Framework: **Vite**
-- Build command: `npm run build`
-- Output directory: `dist`
-- Add all `VITE_*` env vars in Vercel project settings
-
-### Netlify (free)
-
-```bash
-npm i -g netlify-cli
-netlify deploy --prod --dir=dist
-```
-
-Or connect the repo in the Netlify dashboard:
-
-- Build command: `npm run build`
-- Publish directory: `dist`
-- Add `VITE_*` env vars in site settings
-
-### Render (static site, free)
-
-1. New → **Static Site**
-2. Build command: `npm install && npm run build`
-3. Publish directory: `dist`
-4. Add `VITE_*` env vars
-
-**After deploying**, add the deployed URL to `CORS_ALLOWED_ORIGINS` in the backend `.env`:
-
-```
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,https://your-app.vercel.app
-```
+- Build: `npm run build`
+- Output: `dist`
+- Set `VITE_*` env vars, then add the deployed URL to the backend's
+  `CORS_ALLOWED_ORIGINS`.
 
 ## Project structure
 
@@ -122,24 +82,36 @@ vet-registration/
 ├── package.json
 ├── vite.config.js
 └── src/
-    ├── main.jsx          # React entry
-    ├── App.jsx           # Stage machine: auth → checking → register | profile
-    ├── firebase.js       # Firebase init + reCAPTCHA
-    ├── api.js            # All backend API calls
+    ├── main.jsx                  # React entry
+    ├── App.jsx                   # Stage machine (register/otp/credential/app/status)
+    ├── api.js                    # Backend API client (session token in localStorage)
     ├── styles.css
     └── components/
-        ├── PhoneAuth.jsx        # Phone → OTP
-        ├── RegistrationForm.jsx # Name, email, pincode → areas
-        └── ProfilePage.jsx      # View / edit profile
+        ├── RegisterStart.jsx     # Phone + email → send OTP
+        ├── OtpVerify.jsx         # 6-digit OTP entry (resend supported)
+        ├── SetCredential.jsx     # Choose PIN or password
+        ├── SignInForm.jsx        # Phone + PIN/password sign-in
+        ├── ForgotStart.jsx       # Email → send reset OTP
+        ├── ResetCredential.jsx   # OTP → set new PIN/password
+        ├── CredentialInput.jsx   # PIN (6-digit) or password input
+        ├── ApplicationForm.jsx   # Step 1 details → step 2 coverage areas
+        └── StatusPage.jsx        # pending/approved/rejected + review note
 ```
 
 ## API endpoints used
 
-| Method | Endpoint | Headers |
+All under `http://localhost:3000/api/v1`, with `X-App-Key` header.
+Session token (from login/OTP flows) goes in `Authorization: Bearer <token>`.
+
+| Method | Endpoint | Auth |
 |---|---|---|
-| GET | `/api/v1/core/users/me` | `X-App-Key` + `Authorization: Bearer <idToken>` |
-| POST | `/api/v1/core/users` | `X-App-Key` + `Authorization: Bearer <idToken>` |
-| PUT | `/api/v1/core/users/me` | `X-App-Key` + `Authorization: Bearer <idToken>` |
-| GET | `/api/v1/core/pincode/:code` | none (public) |
-| GET | `/api/v1/pashu-health/vet-profiles/me` | `X-App-Key` + `Authorization: Bearer <idToken>` |
-| POST | `/api/v1/pashu-health/vet-profiles` | `X-App-Key` + `Authorization: Bearer <idToken>` |
+| POST | `/core/auth/vet/register/send-otp` | App key |
+| POST | `/core/auth/vet/register/verify-otp` | App key |
+| POST | `/core/auth/vet/setup-pin` | Verify token (from OTP) |
+| POST | `/core/auth/vet/login` | App key |
+| POST | `/core/auth/vet/reset-pin/request` | App key |
+| POST | `/core/auth/vet/reset-pin/confirm` | Verify token |
+| GET | `/core/auth/me` | Session token |
+| POST | `/pashu-health/vet-applications` | Session token |
+| GET | `/pashu-health/vet-applications/me` | Session token |
+| GET | `/core/pincode/:code` | Public |

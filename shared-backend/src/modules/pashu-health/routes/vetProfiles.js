@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
-import { verifyFirebaseToken } from '../../../core/middleware/verifyFirebaseToken.js';
+import { verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -10,21 +10,13 @@ function str(value) {
   return text === '' ? null : text;
 }
 
-function num(value, fallback = null) {
-  if (value === undefined || value === null || value === '') return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 /**
  * POST /api/v1/pashu-health/vet-profiles
- * Protected by verifyAppKey + verifyFirebaseToken.
+ * Protected by verifyAppKey (router-level) + verifySession.
  * Accepts { pincode, serviceAreas: string[] }.
- * Upserts into pashu_vet_profiles keyed by the authenticated user's id
- * (via firebase_uid lookup).
+ * Upserts into pashu_vet_profiles keyed by the session user's id.
  */
-router.post('/', verifyFirebaseToken, async (req, res) => {
-  const uid = req.uid;
+router.post('/', verifySession, async (req, res) => {
   const pincode = str(req.body?.pincode);
   const serviceAreas = req.body?.serviceAreas;
 
@@ -39,8 +31,8 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
 
   try {
     const userResult = await db.execute({
-      sql: 'SELECT id FROM users WHERE firebase_uid = ?',
-      args: [uid],
+      sql: 'SELECT id FROM users WHERE id = ?',
+      args: [req.userId],
     });
 
     if (userResult.rows.length === 0) {
@@ -86,16 +78,14 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
 
 /**
  * GET /api/v1/pashu-health/vet-profiles/me
- * Protected by verifyAppKey + verifyFirebaseToken.
+ * Protected by verifyAppKey + verifySession.
  * Returns the current vet's own profile or 404.
  */
-router.get('/me', verifyFirebaseToken, async (req, res) => {
-  const uid = req.uid;
-
+router.get('/me', verifySession, async (req, res) => {
   try {
     const userResult = await db.execute({
-      sql: 'SELECT id FROM users WHERE firebase_uid = ?',
-      args: [uid],
+      sql: 'SELECT id FROM users WHERE id = ?',
+      args: [req.userId],
     });
 
     if (userResult.rows.length === 0) {

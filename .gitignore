@@ -5,7 +5,9 @@
 /.idea
 .DS_Store
 /build
-/app/build
+/core/build
+/app-farmer/build
+/app-vet/build
 /captures
 .externalNativeBuild
 .cxx

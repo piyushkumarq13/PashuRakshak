@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -43,13 +44,39 @@ function loadEnv() {
     );
   }
 
+  const adminSecret = readEnv('ADMIN_SECRET');
+
+  // Session-token signing secret. Falls back to a value derived from
+  // ADMIN_SECRET so existing deployments keep working without new config.
+  // Set SESSION_SECRET explicitly in production for best practice.
+  const sessionSecret =
+    readEnv('SESSION_SECRET') ??
+    createHash('sha256').update(`pashurakshak-session:${adminSecret}`).digest('hex');
+
+  const mailMode = (readEnv('MAIL_MODE') ?? 'log').toLowerCase();
+  if (mailMode !== 'log' && mailMode !== 'smtp') {
+    throw new Error(`Invalid MAIL_MODE "${mailMode}" — must be "log" or "smtp".`);
+  }
+
+  const smtpPort = Number(readEnv('SMTP_PORT') ?? '587');
+  if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+    throw new Error(`Invalid SMTP_PORT "${process.env.SMTP_PORT}" — must be an integer.`);
+  }
+
   return {
     tursoDatabaseUrl: readEnv('TURSO_DATABASE_URL'),
     tursoAuthToken: readEnv('TURSO_AUTH_TOKEN'),
     port,
     corsAllowedOrigins,
-    adminSecret: readEnv('ADMIN_SECRET'),
+    adminSecret,
     groqApiKey: readEnv('GROQ_API_KEY'),
+    sessionSecret,
+    mailMode,
+    smtpHost: readEnv('SMTP_HOST'),
+    smtpPort,
+    smtpUser: readEnv('SMTP_USER'),
+    smtpPass: readEnv('SMTP_PASS'),
+    mailFrom: readEnv('MAIL_FROM') ?? readEnv('SMTP_USER'),
   };
 }
 

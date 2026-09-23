@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
 import { verifyAppKey } from '../../../core/middleware/verifyAppKey.js';
-import { verifyFirebaseToken } from '../../../core/middleware/verifyFirebaseToken.js';
+import { verifySession } from '../../../core/middleware/verifySession.js';
 import { generateAdvisory, continueConversation } from '../services/aiAdvisory.js';
 
 const router = Router();
@@ -14,13 +14,13 @@ function str(value) {
 
 /**
  * POST /api/v1/pashu-health/reports/:id/chat
- * Protected by verifyAppKey + verifyFirebaseToken.
+ * Protected by verifyAppKey + verifySession.
  * Accepts { message }. Looks up the farmer's preferred_language,
  * calls continueConversation. Returns { reply }.
  */
-router.post('/:id/chat', verifyAppKey, verifyFirebaseToken, async (req, res) => {
+router.post('/:id/chat', verifyAppKey, verifySession, async (req, res) => {
   const reportId = req.params.id;
-  const uid = req.uid;
+  const userId = req.userId;
   const message = str(req.body?.message);
 
   if (!message) {
@@ -32,8 +32,8 @@ router.post('/:id/chat', verifyAppKey, verifyFirebaseToken, async (req, res) => 
 
   try {
     const userResult = await db.execute({
-      sql: 'SELECT preferred_language FROM users WHERE firebase_uid = ?',
-      args: [uid],
+      sql: 'SELECT preferred_language FROM users WHERE id = ?',
+      args: [userId],
     });
 
     if (userResult.rows.length === 0) {
@@ -72,7 +72,7 @@ router.post('/:id/chat', verifyAppKey, verifyFirebaseToken, async (req, res) => 
  * for display, as { messages: [{ role, content }, ...] }.
  * Returns { messages: [] } when no conversation exists yet.
  */
-router.get('/:id/chat', verifyFirebaseToken, async (req, res) => {
+router.get('/:id/chat', verifySession, async (req, res) => {
   const reportId = req.params.id;
 
   try {

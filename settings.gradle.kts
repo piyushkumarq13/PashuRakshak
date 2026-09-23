@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PashuRakshak"
-include(":app")
+include(":core", ":app-farmer", ":app-vet")

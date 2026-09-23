@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../../db/client.js';
 import { verifyAppKey } from '../../../core/middleware/verifyAppKey.js';
-import { verifyFirebaseToken } from '../../../core/middleware/verifyFirebaseToken.js';
+import { verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -20,19 +20,19 @@ function num(value, fallback = null) {
 
 /**
  * POST /api/v1/pashu-health/visits
- * Protected by verifyAppKey + verifyFirebaseToken.
+ * Protected by verifyAppKey + verifySession.
  * Accepts { reportId, scannedQrCodeId, latitude, longitude, assessment [risky/moderate/mild] }.
  *
  * - Look up the report's animal_id → pashu_animals.qr_code_id, compare
  *   to scannedQrCodeId to set `matched`.
- * - Reject 403 if req.uid's user id doesn't match assigned_vet_id —
+ * - Reject 403 if the session's user id doesn't match assigned_vet_id —
  *   unless assigned_vet_id is null (fallback path).
  * - Insert visit_verifications row.
  * - UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined'.
  * - If assessment === 'risky': insert a pashu_gov_alerts row
  *   (severity='high', message with animal/village context).
  */
-router.post('/', verifyAppKey, verifyFirebaseToken, async (req, res) => {
+router.post('/', verifyAppKey, verifySession, async (req, res) => {
   const body = req.body ?? {};
   const reportId = str(body.reportId);
   const scannedQrCodeId = str(body.scannedQrCodeId);
@@ -54,20 +54,12 @@ router.post('/', verifyAppKey, verifyFirebaseToken, async (req, res) => {
     });
   }
 
-  const vetUid = req.uid;
+  const vetUserId = req.userId;
 
   try {
-    // Look up the vet's user id from firebase_uid
-    const vetUserResult = await db.execute({
-      sql: 'SELECT id FROM users WHERE firebase_uid = ?',
-      args: [vetUid],
-    });
-
-    if (vetUserResult.rows.length === 0) {
-      return res.status(404).json({ exists: false });
+    if (!vetUserId) {
+      return res.status(403).json({ error: 'forbidden', message: 'A vet session is required.' });
     }
-
-    const vetUserId = vetUserResult.rows[0].id;
 
     // Look up the report to get animal_id, assigned_vet_id, village, and status
     const reportResult = await db.execute({
@@ -122,8 +114,8 @@ router.post('/', verifyAppKey, verifyFirebaseToken, async (req, res) => {
 
       await db.execute({
         sql: `INSERT INTO pashu_gov_alerts (id, report_id, severity, message, acknowledged, created_at)
-          VALUES (?, 'high', ?, 0, ?)`,
-        args: [alertId, message, now],
+          VALUES (?, ?, 'high', ?, 0, ?)`,
+        args: [alertId, reportId, message, now],
       });
     }
 

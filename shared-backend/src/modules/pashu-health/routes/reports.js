@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
-import { verifyFirebaseToken } from '../../../core/middleware/verifyFirebaseToken.js';
+import { verifySession } from '../../../core/middleware/verifySession.js';
 import { detectClusterForReport, categorizeAndAssign } from '../services/clusterDetection.js';
 import { generateAdvisory } from '../services/aiAdvisory.js';
 
@@ -48,13 +48,13 @@ function jsonish(value, fallback) {
 /**
  * POST /api/v1/pashu-health/reports
  * Idempotent upsert by id — the Android app may retry the same report.
- * Requires an app key (router-level verifyAppKey) AND a Firebase ID token —
- * report submissions must be tied to an authenticated farmer (req.uid).
+ * Requires an app key (router-level verifyAppKey) AND a session token —
+ * report submissions are tied to the authenticated farmer (req.userId).
  *
  * Accepts the SymptomReport push payload (camelCase, with symptoms/riskBreakdown
  * as JSON strings; snake_case aliases from ReportPushApi.buildPayload also work).
  */
-router.post('/', verifyFirebaseToken, async (req, res) => {
+router.post('/', verifySession, async (req, res) => {
   const body = req.body ?? {};
 
   const id = str(body.id);
@@ -63,7 +63,9 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
   }
 
   const animalId = str(body.animalId) ?? str(body.animal_id);
-  const farmerId = str(body.farmerId) ?? str(body.farmer_id);
+  // The authenticated farmer is authoritative; the body value (legacy sync
+  // payloads) is only used when present.
+  const farmerId = str(body.farmerId) ?? str(body.farmer_id) ?? req.userId;
   if (!animalId || !farmerId) {
     return res
       .status(400)

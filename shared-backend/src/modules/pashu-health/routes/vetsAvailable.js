@@ -4,11 +4,12 @@ import { db } from '../../../db/client.js';
 const router = Router();
 
 /**
- * GET /api/v1/pashu-health/vets/available?area=
- * Returns vets (join users + pashu_vet_profiles where role='vet')
- * whose service_areas JSON contains the given area string.
+ * GET /api/v1/pashu-health/vets/available?area=  (alias: /vets?area=)
+ * Returns vets whose service_areas JSON contains the given area string.
+ * Eligible = application approved, OR a legacy vet profile with no
+ * application row yet (predates the approval workflow).
  */
-router.get('/', async (req, res) => {
+async function listAvailableVets(req, res) {
   const area = req.query.area;
 
   if (!area || !area.trim()) {
@@ -24,7 +25,10 @@ router.get('/', async (req, res) => {
                v.pincode, v.service_areas
         FROM users u
         JOIN pashu_vet_profiles v ON u.id = v.user_id
-        WHERE u.role = 'vet' AND v.service_areas LIKE ?`,
+        LEFT JOIN vet_applications a ON a.user_id = u.id
+        WHERE u.role = 'vet'
+          AND (a.status = 'approved' OR a.id IS NULL)
+          AND v.service_areas LIKE ?`,
       args: [`%${area}%`],
     });
 
@@ -36,6 +40,9 @@ router.get('/', async (req, res) => {
       message: 'Could not look up available vets.',
     });
   }
-});
+}
+
+router.get('/', listAvailableVets);
+router.get('/available', listAvailableVets);
 
 export default router;

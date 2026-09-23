@@ -17,6 +17,8 @@ B2_BUCKET_NAME=
 # Mirror the same three B2 values in shared-backend/.env (deploy docs).
 
 # shared-backend origin (no trailing slash) — used by ReportPushApi + device registration.
+# Defaults to the deployed backend when unset; point at http://10.0.2.2:3000 only
+# for emulator + local-backend debugging.
 API_BASE_URL=https://pashurakshak-z8lk.onrender.com
 # api_key from POST /api/v1/core/apps (shown once at registration).
 APP_API_KEY=

@@ -271,3 +271,81 @@ button:disabled {
   font-size: 0.8125rem;
   font-weight: 500;
 }
+
+/* ── Credential toggle row ── */
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.label-row label {
+  margin-top: 0;
+}
+
+.toggle-btn {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+/* ── Landing ── */
+.landing-alt {
+  margin-top: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Status page ── */
+.status-badge {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-approved {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.status-none {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.status-message {
+  margin-top: 12px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.review-note {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review-note p {
+  font-size: 0.9375rem;
+}

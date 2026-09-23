@@ -2,13 +2,19 @@
 
 Multi-app shared backend foundation: Express (ES modules) + Turso/libSQL.
 
-- **Phase 1:** core app-key system (`/api/v1/core/*`) — app registration, admin auth, users system (phone/firebase auth, farmer/vet profiles).
-- **Phase 2:** `pashu-health` module (`/api/v1/pashu-health/*`) — reports, animals,
-  vaccinations, alerts for the PashuRakshak Android app. All module routes require
-  a valid `X-App-Key`.
-- **Phase 3:** cluster detection (7-day / 5 km / 3+ rule) on report POST + `GET /clusters`.
-- **Phase 4:** Firebase Auth verification (core) + generic device-token registration
-  + vet push on cluster alerts.
+- **Core:** app-key system (`/api/v1/core/*`) — app registration, admin routes,
+  users, pincode lookup, device tokens, magistrate seeding.
+- **Auth (`/api/v1/auth/*`):** custom email-OTP + PIN/password sessions —
+  **no Firebase Auth**. Firebase is used only for FCM push.
+- **Government (`/api/v1/gov/*`):** district-magistrate dashboard endpoints
+  (applications scoped to the magistrate's district).
+- **Pashu-health (`/api/v1/pashu-health/*`):** reports, animals, vaccinations,
+  alerts, vet applications, AI chat, visits, clusters. All routes require
+  `X-App-Key`; protected routes additionally require a session token.
+
+Clients: **PashuRakshak Farmer** (Android, `com.pashurakshak.app`),
+**PashuRakshak Vet** (Android, `com.pashurakshak.vet`),
+**vet-registration** (web, port 5173), **gov-portal** (web, port 5174).
 
 ## Stack
 
@@ -19,6 +25,8 @@ Multi-app shared backend foundation: Express (ES modules) + Turso/libSQL.
 | Database | Turso via `@libsql/client` (remote `libsql://` URL, or `file:` for local dev) |
 | Config | `dotenv` + strict validation in `src/config/env.js` |
 | CORS | Restricted to `CORS_ALLOWED_ORIGINS` |
+| Auth | HMAC-signed session tokens + emailed 6-digit OTP + scrypt PIN/password |
+| Push | Firebase Cloud Messaging (FCM) via `firebase-admin` |
 
 ## Setup
 
@@ -27,7 +35,7 @@ cd shared-backend
 npm install
 cp .env.example .env
 # edit .env — fill TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, PORT,
-# CORS_ALLOWED_ORIGINS, ADMIN_SECRET
+# CORS_ALLOWED_ORIGINS, ADMIN_SECRET; set SESSION_SECRET + MAIL_* for OTP
 npm start          # runs migrations, then listens on PORT
 ```
 
@@ -38,7 +46,108 @@ curl http://localhost:3000/health
 # {"status":"ok"}
 ```
 
-## Core API (Phase 1)
+## Authentication (custom — no Firebase Auth)
+
+Tokens are stateless HMAC-SHA256 signatures (`src/core/services/sessionToken.js`):
+
+- **Session tokens** — payload `{ typ: 'session', sub, role, phone?, email?, district?, exp }`,
+  30-day TTL, returned by login/register/reset endpoints as `{ token }`.
+  Sent on every protected request as `Authorization: Bearer <token>`.
+- **Verify tokens** — payload `{ typ: 'verify', purpose, email, phone?, exp }`,
+  10-minute TTL, returned by `POST /auth/otp/verify` and consumed once while
+  completing registration or a PIN reset.
+
+Middleware (`src/core/middleware/verifySession.js`):
+
+- `verifySession` — parses the Bearer token; sets `req.session`, `req.userId`
+  (farmers/vets), `req.magistrateId` (gov), `req.role`. Errors:
+  `401 missing_bearer_token`, `401 invalid_session_token`.
+- `requireRole('farmer' | 'vet' | 'gov')` — rejects with `403 forbidden_role`.
+
+Credentials are stored as `scrypt:<salt>:<hash>` (`src/core/services/credentials.js`).
+PINs are exactly 6 digits; vet accounts may also use a password (≥ 6 chars).
+
+OTP codes are 6 digits, SHA-256-hashed at rest, 10-minute TTL, 5 attempts,
+rate-limited to 1 send / 60 s and 5 sends / hour per (email, purpose).
+Delivery: `MAIL_MODE=log` prints the code to the server console (dev);
+`MAIL_MODE=smtp` sends email via Gmail SMTP (use an App Password).
+
+### Auth endpoints (`/api/v1/auth/*`, all require `X-App-Key`)
+
+| Method & path | Body | Returns |
+|---|---|---|
+| `POST /auth/otp/send` | `{ email, purpose, phone? }` | `{ success, email: masked, purpose, retryAfterSeconds?, message }` |
+| `POST /auth/otp/verify` | `{ email, purpose, code }` | `{ success, verifyToken, email: masked }` |
+| `POST /auth/farmer/check` | `{ phone }` | `{ exists, hasCredential, requiresPinSetup, hasEmail }` |
+| `POST /auth/farmer/login` | `{ phone, pin }` | `{ token, user, profile }` |
+| `POST /auth/farmer/register` | `{ verifyToken, phone, pin, name, preferredLanguage?, animalCount?, village, pincode }` | `{ token, user, profile }` |
+| `POST /auth/farmer/reset-pin` | `{ verifyToken, pin }` | `{ token, user, profile }` |
+| `POST /auth/vet/setup-pin` | `{ verifyToken, phone, pin, pinType? }` | `{ token, user }` |
+| `POST /auth/vet/login` | `{ phone, credential, client: 'app' \| 'web' }` | `{ token, user, applicationStatus, application }` |
+| `POST /auth/vet/reset-pin` | `{ verifyToken, pin, pinType? }` | `{ token, user }` |
+| `POST /auth/gov/request-otp` | `{ email }` | `{ success, email: masked, message }` (same shape whether or not the magistrate exists — no enumeration) |
+| `POST /auth/gov/verify` | `{ email, code }` | `{ token, magistrate }` |
+
+`purpose` must be one of: `vet_register`, `farmer_register`,
+`farmer_reset_pin`, `vet_reset_pin` (gov uses `gov_login` via its own routes).
+
+**Vet approval gate:** `POST /auth/vet/login` with `client: 'app'` returns
+`403 { error: 'not_approved', applicationStatus, reviewNote?, message }` unless
+the vet's application is `approved`. `client: 'web'` always succeeds (the
+registration web shows status).
+
+Phone numbers are canonicalized (digits only; `+91`/`0` prefixes stripped) —
+see `src/core/services/phone.js`.
+
+### Flows
+
+- **Farmer app:** phone + PIN login (`farmer/login`). New users: phone + email →
+  OTP (`farmer_register`) → details + PIN (`farmer/register`) → session.
+  Legacy accounts without a PIN use forgot-PIN (`farmer_reset_pin`).
+- **Vet app:** phone + PIN/password login with `client: 'app'` (approved only).
+- **Vet registration web:** email OTP (`vet_register`) → `vet/setup-pin` →
+  session → submit application → status page (re-login with `client: 'web'`).
+- **Government web:** seeded magistrate → `gov/request-otp` → `gov/verify` →
+  gov session.
+
+### Seed a district magistrate (admin only)
+
+```bash
+curl -X POST http://localhost:3000/api/v1/core/admin/magistrates \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Secret: $ADMIN_SECRET" \
+  -d '{"email":"dm@example.gov.in","name":"District Magistrate","district":"Jaipur","state":"Rajasthan"}'
+```
+
+Also: `GET /admin/magistrates` (list), `DELETE /admin/magistrates/:id`.
+Magistrates live in the standalone `gov_magistrates` table (session `role='gov'`).
+
+### Vet applications (routed by pincode → district)
+
+All `/api/v1/pashu-health/vet-applications/*` routes require a **vet** session:
+
+| Method & path | Purpose |
+|---|---|
+| `POST /vet-applications` | Submit/resubmit `{ fullName, qualification, licenseNumber, experienceYears?, clinicName?, address, village, pincode, serviceAreas: string[] }`. District/state resolved from the pincode via `api.postalpincode.in`; also upserts `pashu_vet_profiles` |
+| `GET /vet-applications/me` | The signed-in vet's application (or `{ application: null }`) |
+
+### Government dashboard (`/api/v1/gov/*`, gov session + `X-App-Key`)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /gov/overview` | Platform counts (farmers, vets, applications by status, reports, clusters, alerts) |
+| `GET /gov/vet-applications?status=pending\|approved\|rejected\|all` | Applications in **the magistrate's district** |
+| `POST /gov/vet-applications/:id/approve` | Body `{ note? }` — district-checked |
+| `POST /gov/vet-applications/:id/reject` | Body `{ note }` — district-checked |
+| `GET /gov/reports` | All symptom reports |
+| `GET /gov/clusters` | Active outbreak clusters |
+| `GET /gov/gov-alerts` | Government alerts from risky visits |
+| `POST /gov/gov-alerts/:id/acknowledge` | Mark acknowledged |
+| `GET /gov/users` | Farmers & vets listing (profiles joined) |
+
+Wrong-district review attempts → `403 wrong_district`.
+
+## Core API
 
 All routes are under `/api/v1/core`.
 
@@ -62,7 +171,7 @@ Response (201) — **the `apiKey` is returned exactly once and never again**:
   "apiKey": "<64-char hex>",
   "message": "Store this API key now — it is shown ONCE here and will never be returned again.",
   "keyShownOnce": true,
-  "createdAt": 1769… 
+  "createdAt": 1769…
 }
 ```
 
@@ -74,37 +183,22 @@ curl http://localhost:3000/api/v1/core/apps -H "X-Admin-Secret: $ADMIN_SECRET"
 
 Returns `{ "apps": [{ "id", "name", "created_at" }] }` — never includes `api_key`.
 
-### Using an app key (for future module routes)
+### Using an app key
 
 Send `X-App-Key: <apiKey>` on requests. The `verifyAppKey` middleware
 (`src/core/middleware/verifyAppKey.js`) validates it against the `apps` table
 and sets `req.appId` for handlers to use.
 
-## Firebase Auth + devices (Phase 4)
-
-Core middleware `src/core/middleware/verifyFirebaseToken.js` initializes
-`firebase-admin` from `FIREBASE_SERVICE_ACCOUNT_JSON` and verifies
-`Authorization: Bearer <idToken>`, attaching `req.uid`.
-
-> **Where to get the JSON:** Firebase Console → **Project Settings** →
-> **Service Accounts** → **Generate new private key**. It must belong to the
-> **same Firebase project the Android app uses** (the one behind its
-> `google-services.json`), otherwise tokens minted by the app will fail
-> verification. Put the file contents on a single line as the value of
-> `FIREBASE_SERVICE_ACCOUNT_JSON` in `.env` (see `.env.example`).
->
-> Without it, protected routes respond `503 { "error": "firebase_not_configured" }`.
-
-### Register a device (app key + Firebase token)
+### Register a device (app key + session token)
 
 `POST /api/v1/core/devices` — protected by **both** `verifyAppKey` and
-`verifyFirebaseToken` (which app + which user).
+`verifySession` (which app + which user).
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/core/devices \
   -H "Content-Type: application/json" \
   -H "X-App-Key: $APP_KEY" \
-  -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \
+  -H "Authorization: Bearer $SESSION_TOKEN" \
   -d '{"role":"vet","fcmToken":"<FCM token from the app>"}'
 ```
 
@@ -114,25 +208,26 @@ Upserts `device_tokens` keyed by `(app_id, uid, role)` →
 ### Users system
 
 `POST /api/v1/core/users` — protected by **both** `verifyAppKey` and
-`verifyFirebaseToken`. Creates or updates a user keyed by `phone`.
+`verifySession`. Creates or updates a user keyed by `phone`.
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/core/users \
   -H "Content-Type: application/json" \
   -H "X-App-Key: $APP_KEY" \
-  -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \
-  -d '{"phone":"+919000000000","role":"farmer","name":"Ravi","email":"ravi@example.com","preferredLanguage":"hi"}'
+  -H "Authorization: Bearer $SESSION_TOKEN" \
+  -d '{"phone":"9000000000","role":"farmer","name":"Ravi","email":"ravi@example.com","preferredLanguage":"hi"}'
 ```
 
-Returns `{ "user": { "id", "phone", "firebase_uid", "role", "name", "email", "preferred_language", "created_at", "updated_at" } }`.
+Returns `{ "user": { "id", "phone", "role", "name", "email", "preferred_language", "created_at", "updated_at" } }`
+(`pin_hash` and legacy `firebase_uid` are stripped).
 
 `GET /api/v1/core/users/me` — protected by both middlewares. Looks up the
-calling user by `firebase_uid`. Returns `{ "user": {...} }` or `404 { "exists": false }`
-(when the user has not completed onboarding).
+calling user by the session's `sub` (user id). Returns `{ "user": {...} }` or
+`404 { "exists": false }` (when the user has not completed onboarding).
 
 `PUT /api/v1/core/users/me` — protected by both middlewares. Partial update
-of `{ name, email, preferredLanguage }` keyed by `firebase_uid`. Returns the
-updated user row or `404 { "exists": false }`.
+of `{ name, email, preferredLanguage }`. Returns the updated user row or
+`404 { "exists": false }`.
 
 ### Pincode lookup (public)
 
@@ -151,15 +246,9 @@ the user's `fcm_token` in `device_tokens` and sends via
 `firebase-admin` `sendEachForMulticast`. Used by cluster detection: when a new
 cluster alert is created, every `device_tokens` row with `role='vet'` and the
 same `app_id` receives the alert (best-effort; failures never fail the report).
+Requires `FIREBASE_SERVICE_ACCOUNT_JSON` (FCM only — not used for login).
 
-### Firebase-protected module routes
-
-- `POST /api/v1/pashu-health/reports` now also requires
-  `Authorization: Bearer <idToken>` (in addition to `X-App-Key`) — report
-  submissions are tied to an authenticated farmer (`req.uid`).
-- All `GET /pashu-health/*` routes remain app-key only.
-
-## Pashu-Health API (Phase 5)
+## Pashu-Health API
 
 All routes below live under `/api/v1/pashu-health` and are protected by
 `verifyAppKey` (the whole router in `src/routes.js`) — every request needs:
@@ -170,12 +259,16 @@ X-App-Key: <apiKey issued at app registration>
 
 Missing/invalid key → `401 { "error": "missing_app_key" | "invalid_app_key", ... }`.
 
+Session-protected routes additionally need `Authorization: Bearer <session token>`
+(report POST, farmer/vet profiles, vet applications, AI chat, visits).
+
 Database tables (migration `001_pashu_health.js`, all prefixed `pashu_`):
 `pashu_animals`, `pashu_vaccinations`, `pashu_symptom_reports`, `pashu_vets`,
 `pashu_alerts`, `pashu_farmers` — columns mirror the Android app's `Migrations.kt`.
 
-Core `users` table (migration `002_users.js`): `id`, `phone`, `firebase_uid`,
-`role`, `name`, `email`, `preferred_language`, `created_at`, `updated_at`.
+Core `users` table (migration `002_users.js`): `id`, `phone`, `role`, `name`,
+`email`, `preferred_language`, `pin_hash`, `pin_type`, `email_verified`,
+`created_at`, `updated_at` (legacy `firebase_uid` column may still exist).
 
 Profile tables (migration `003_pashu_profiles.js`, `pashu_` prefixed):
 - `pashu_farmer_profiles` (`user_id PK/FK → users`, `animal_count`, `village`, `pincode`, `created_at`)
@@ -193,11 +286,15 @@ Visit verification + gov alerts (migration `006_visits_and_gov_alerts.js`):
 latitude, longitude, verified_at) and `pashu_gov_alerts` (id, report_id, severity,
 message, acknowledged, created_at).
 
+Auth + applications (migration `007_auth_and_vet_applications.js`):
+`auth_otps` (hashed codes), `gov_magistrates`, `vet_applications`
+(status pending/approved/rejected, district from pincode), plus `users` PIN columns.
+
 ### Reports
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/pashu-health/reports` | Upsert a symptom report by `id` (idempotent — safe for app retries) → `200 { "success": true }`. After a successful save, runs **cluster detection**, **AI risk categorization**, and **vet auto-assignment** |
+| `POST /api/v1/pashu-health/reports` | Upsert a symptom report by `id` (idempotent — safe for app retries). Requires a session token. After a successful save, runs **cluster detection**, **AI risk categorization**, and **vet auto-assignment** |
 | `GET /api/v1/pashu-health/reports` | List all reports (newest first) → `{ "reports": [...] }` |
 | `GET /api/v1/pashu-health/reports/:id` | Single report → `{ "report": {...} }` or `404` |
 
@@ -209,7 +306,7 @@ aliases from `ReportPushApi.buildPayload` are also accepted; `symptoms` and
 {
   "id": "uuid",
   "animalId": "uuid",
-  "farmerId": "uid-or-phone",
+  "farmerId": "users.id (defaults to the session user)",
   "symptoms": "[\"Fever\",\"Cough\"]",
   "photoRemoteUrl": "https://… or null",
   "latitude": 12.34,
@@ -228,15 +325,6 @@ aliases from `ReportPushApi.buildPayload` are also accepted; `symptoms` and
 `village` is optional. When present, the system auto-categorizes the report's
 risk (`high` ≥ 60, `mid` ≥ 30, `low` < 30) and attempts to assign a vet whose
 `service_areas` contains the village name. See **AI categorization + vet assignment** below.
-
-Example:
-
-```bash
-curl -X POST http://localhost:3000/api/v1/pashu-health/reports \
-  -H "Content-Type: application/json" \
-  -H "X-App-Key: $APP_KEY" \
-  -d '{"id":"r1","animalId":"a1","farmerId":"f1","symptoms":"[\"Fever\"]","photoRemoteUrl":null,"latitude":12.3,"longitude":77.1,"riskScore":20,"riskBreakdown":"{\"Fever\":20}","status":"reported","createdAt":1790084141971}'
-```
 
 ### AI categorization + vet assignment
 
@@ -285,9 +373,6 @@ logged and never fail the report push.
 | `PUT /api/v1/pashu-health/alerts/:id` | Partial update (e.g. `{"read": true}`) or `404` |
 | `DELETE /api/v1/pashu-health/alerts/:id` | Delete or `404` |
 
-> `pashu_vets` / `pashu_farmers` tables exist (migration `001`) but have no
-> endpoints yet.
-
 ### Cluster detection
 
 `src/modules/pashu-health/services/clusterDetection.js` runs automatically after
@@ -320,22 +405,23 @@ at the same 5 km radius; groups with ≥ 3 reports are returned with
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/pashu-health/farmer-profiles` | Create/upsert profile (requires `animalCount`, `village`, `pincode`); resolved by `firebase_uid` → `users` id |
+| `POST /api/v1/pashu-health/farmer-profiles` | Create/upsert profile (requires `animalCount`, `village`, `pincode`); keyed by the session user |
 | `GET /api/v1/pashu-health/farmer-profiles/me` | Get the caller's own profile or `404 { exists: false }` |
 
-Protected by `verifyAppKey` + `verifyFirebaseToken`. Looks up the user via `users.firebase_uid = req.uid` and upserts into `pashu_farmer_profiles`.
+Protected by `verifyAppKey` + `verifySession`.
 
 ### Vet profiles
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/pashu-health/vet-profiles` | Create/upsert profile (requires `pincode`, `serviceAreas: string[]`); resolved by `firebase_uid` → `users` id |
+| `POST /api/v1/pashu-health/vet-profiles` | Create/upsert profile (requires `pincode`, `serviceAreas: string[]`) |
 | `GET /api/v1/pashu-health/vet-profiles/me` | Get the caller's own profile or `404 { exists: false }` |
 | `GET /api/v1/pashu-health/vets/available?area=` | List vets whose `service_areas` JSON contains the given area string |
 
-Protected by `verifyAppKey` + `verifyFirebaseToken` for all mutating and `me` routes. `GET /available` is app-key only (via the router-level middleware). Uses a `JOIN users + pashu_vet_profiles` with `role = 'vet'` and a `LIKE` check on `service_areas` text.
+Protected by `verifyAppKey` + `verifySession` for all mutating and `me` routes.
+`GET /available` is app-key only (via the router-level middleware).
 
-### AI advisory & chat (Phase 4)
+### AI advisory & chat
 
 Powered by Groq (`llama-3.3-70b-versatile`). Requires `GROQ_API_KEY` in `.env` (optional — failures degrade gracefully).
 
@@ -349,28 +435,29 @@ After a successful report save, `generateAdvisory` is called automatically:
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/pashu-health/reports/:id/chat` | Send a follow-up message; `categorizeAndAssign` + `continueConversation` preserves full history but sends only the last 10 messages to Groq to cap token usage |
+| `POST /api/v1/pashu-health/reports/:id/chat` | Send a follow-up message; preserves full history but sends only the last 10 messages to Groq to cap token usage |
 | `GET /api/v1/pashu-health/reports/:id/chat` | Returns the FULL stored conversation history for display |
 
-Both chat endpoints require `verifyAppKey` + `verifyFirebaseToken`. A Groq failure (rate limit, network, missing key) never blocks the report save — `aiAdvisory` is `null` on failure.
+Both chat endpoints require `verifyAppKey` + `verifySession`. A Groq failure (rate limit, network, missing key) never blocks the report save — `aiAdvisory` is `null` on failure.
 
 ### Visit verification
 
-`POST /api/v1/pashu-health/visits` — protected by `verifyAppKey` + `verifyFirebaseToken`.
+`POST /api/v1/pashu-health/visits` — protected by `verifyAppKey` + `verifySession`.
 
 Accepts `{ reportId, scannedQrCodeId, latitude, longitude, assessment }` where `assessment` is one of `risky`, `moderate`, `mild`.
 
 - Compares `scannedQrCodeId` to the report's animal QR code to set `matched`
-- Rejects `403` if the authenticated vet is not the assigned vet (unless no vet is assigned — fallback path)
+- Rejects `403` if the session user is not the assigned vet (unless no vet is assigned — fallback path)
 - Inserts into `pashu_visit_verifications`
 - Updates `pashu_symptom_reports` with `vet_assessment` and sets `status = 'examined'`
-- If `assessment === 'risky'`, inserts a `pashu_gov_alerts` row (severity='high') for government dashboard readiness
+- If `assessment === 'risky'`, inserts a `pashu_gov_alerts` row (severity='high') for the government dashboard
 
 ### Government alerts
 
 `GET /api/v1/pashu-health/gov-alerts` — app-key only (via router-level middleware).
 
-Returns all `pashu_gov_alerts` rows ordered by `created_at DESC`. For future dashboard use.
+Returns all `pashu_gov_alerts` rows ordered by `created_at DESC`. The gov-portal
+uses `GET /api/v1/gov/gov-alerts` (gov session) plus acknowledge.
 
 ## Environment variables
 
@@ -381,12 +468,17 @@ See `.env.example`:
 | `TURSO_DATABASE_URL` | yes | Turso `libsql://…` URL (or `file:…` for local dev) |
 | `TURSO_AUTH_TOKEN` | yes | Turso auth token |
 | `PORT` | yes | HTTP port |
-| `CORS_ALLOWED_ORIGINS` | yes | Comma-separated allowed origins |
+| `CORS_ALLOWED_ORIGINS` | yes | Comma-separated allowed origins (backend + both webs: 3000, 5173, 5174) |
 | `ADMIN_SECRET` | yes | Value of the `X-Admin-Secret` header for admin routes |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | for auth/push | One-line service-account JSON (see Firebase Auth section). Missing → `503` on Firebase-protected routes, server still starts. |
+| `SESSION_SECRET` | recommended | HMAC secret for session/verify tokens. Falls back to a value derived from `ADMIN_SECRET` when unset |
+| `MAIL_MODE` | no (default `log`) | `log` prints OTP codes to the console; `smtp` sends email |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` | for `MAIL_MODE=smtp` | Gmail SMTP (App Password) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | for FCM push | One-line service-account JSON. Missing → push helpers skip gracefully; login is unaffected |
+| `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET_NAME` | for photo storage | Backblaze B2 (mirrors Android `local.properties`) |
 | `GROQ_API_KEY` | no | Groq API key for AI advisory and chat. Without it, AI routes degrade gracefully and return `null`. |
 
-The server refuses to start and prints every missing variable if any are absent.
+The server refuses to start and prints every missing variable if any required
+variables are absent.
 
 ## Migrations
 
@@ -394,8 +486,8 @@ Migrations live in `src/db/migrations/*.js`, each exporting:
 
 ```js
 export default {
-  version: 7,          // unique, monotonic
-  name: '006_visits_and_gov_alerts',
+  version: 8,          // unique, monotonic
+  name: '007_auth_and_vet_applications',
   async up(db) { /* SQL via db.execute / db.batch */ },
 };
 ```
@@ -415,15 +507,15 @@ src/
 ├── config/env.js            # env loading + validation
 ├── db/client.js             # configured Turso client
 ├── db/migrate.js            # migration runner (migrations_applied table)
-├── db/migrations/           # numbered migration files (000_core.js, 001_pashu_health.js, 002_users.js, 003_pashu_profiles.js, 004_report_ai_fields.js, 005_ai_tables.js, 006_visits_and_gov_alerts.js, …)
+├── db/migrations/           # numbered migration files (000_core.js … 007_auth_and_vet_applications.js)
 ├── core/
-│   ├── middleware/          # verifyAppKey.js, adminSecret.js, verifyFirebaseToken.js
-│   ├── routes/              # apps.js, devices.js, users.js, pincode.js
-│   └── services/            # push.js (sendPushToUid)
+│   ├── middleware/          # verifyAppKey.js, adminSecret.js, verifySession.js
+│   ├── routes/              # apps.js, auth.js, devices.js, users.js, pincode.js, gov.js, adminMagistrates.js
+│   └── services/            # sessionToken.js, otp.js, mailer.js, credentials.js, phone.js, pincode.js, push.js, firebaseAdmin.js
 ├── modules/
-│   ├── pashu-health/routes/      # reports.js, animals.js, vaccinations.js, alerts.js, clusters.js, farmerProfiles.js, vetProfiles.js, vetsAvailable.js, aiChat.js, visits.js, govAlerts.js, index.js
+│   ├── pashu-health/routes/      # reports.js, animals.js, vaccinations.js, alerts.js, clusters.js, farmerProfiles.js, vetProfiles.js, vetApplications.js, vetsAvailable.js, aiChat.js, visits.js, govAlerts.js, index.js
 │   └── pashu-health/services/    # clusterDetection.js (7-day / 5 km / 3+ rule, categorizeAndAssign), aiAdvisory.js (Groq)
-├── routes.js                # mounts core + pashu-health (+ future modules) under /api/v1
+├── routes.js                # mounts core + auth + gov + pashu-health under /api/v1
 └── app.js                   # Express setup, CORS, /health, starts server
 ```
 
@@ -443,17 +535,18 @@ src/
 
 3. Put module-specific migrations in `src/db/migrations/` with a fresh
    `version` number (e.g. `010_pashu_health.js`); they run automatically.
-4. Mount it in `src/routes.js` (the commented placeholder shows where):
+4. Mount it in `src/routes.js`:
 
    ```js
-   import pashuHealthRoutes from './modules/pashu-health/routes/index.js';
-   router.use('/pashu-health', verifyAppKey, pashuHealthRoutes);
+   import myModuleRoutes from './modules/<name>/routes/index.js';
+   router.use('/<name>', verifyAppKey, myModuleRoutes);
    ```
 
-   → served at `/api/v1/pashu-health/...`.
+   → served at `/api/v1/<name>/...`.
 
 5. Keep project-specific tables inside your module's migrations; core tables
-   (`apps`, `device_tokens`) stay generic and shared.
+   (`apps`, `device_tokens`, `users`, `auth_otps`, `gov_magistrates`) stay
+   generic and shared.
 
 ## Security notes
 
@@ -461,9 +554,15 @@ src/
   GET route never returns keys.
 - `.env` is git-ignored; only `.env.example` (no secrets) is committed.
 - CORS rejects any origin not listed in `CORS_ALLOWED_ORIGINS`.
-- Every `/api/v1/pashu-health/*` request must send a valid `X-App-Key`
-  (`verifyAppKey` is applied to the whole module router in `src/routes.js`).
-- `POST /api/v1/core/devices` and `POST /api/v1/pashu-health/reports` also
-  require a valid Firebase ID token (`Authorization: Bearer …`).
-- Push and report POSTs degrade to a clear `503 firebase_not_configured` until
-  `FIREBASE_SERVICE_ACCOUNT_JSON` is set — the server still boots without it.
+- Every `/api/v1/*` request must send a valid `X-App-Key`
+  (`verifyAppKey` is applied in `src/routes.js`).
+- Protected business routes also require a valid session token
+  (`Authorization: Bearer …`) and, where relevant, the right role
+  (`requireRole`).
+- OTP codes and credential hashes are never stored in plaintext; OTP responses
+  only return masked emails.
+- Set an explicit `SESSION_SECRET` in production; rotate `ADMIN_SECRET` carefully
+  (changing it changes the derived session secret when `SESSION_SECRET` is unset,
+  invalidating existing sessions).
+- Firebase is used **only** for FCM push (`FIREBASE_SERVICE_ACCOUNT_JSON`);
+  removing it only disables push notifications, never login.
