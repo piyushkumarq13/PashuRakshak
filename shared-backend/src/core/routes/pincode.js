@@ -8,7 +8,7 @@ const router = Router();
  * Public endpoint — calls the PostalPincode API server-side and returns
  * a simplified list of area / post-office names for the given pincode.
  */
-router.get('/:code', async (req, res) => {
+router.get('/pincode/:code', async (req, res) => {
   const code = req.params.code;
 
   if (!code || !/^\d{6}$/.test(code)) {
