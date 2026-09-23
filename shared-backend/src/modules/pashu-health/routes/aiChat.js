@@ -69,9 +69,10 @@ router.post('/:id/chat', verifyAppKey, verifyFirebaseToken, async (req, res) => 
 /**
  * GET /api/v1/pashu-health/reports/:id/chat
  * Returns the FULL stored conversation history (not the capped version)
- * for display.
+ * for display, as { messages: [{ role, content }, ...] }.
+ * Returns { messages: [] } when no conversation exists yet.
  */
-router.get('/:id/chat', async (req, res) => {
+router.get('/:id/chat', verifyFirebaseToken, async (req, res) => {
   const reportId = req.params.id;
 
   try {
@@ -81,12 +82,12 @@ router.get('/:id/chat', async (req, res) => {
     });
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'not_found', message: 'No conversation found for this report.' });
+      return res.status(200).json({ messages: [] });
     }
 
     const history = JSON.parse(result.rows[0].full_history);
 
-    return res.status(200).json({ conversation: history });
+    return res.status(200).json({ messages: history });
   } catch (error) {
     console.error('[pashu-health/reports/:id/chat] lookup failed:', error);
     return res.status(500).json({

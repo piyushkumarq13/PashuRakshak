@@ -81,26 +81,40 @@ export async function generateAdvisory(report, farmerPreferredLanguage) {
  * Appends the assistant reply to the FULL stored history (not just
  * the capped context), saves, returns the reply.
  */
+const UNAVAILABLE_REPLY = 'AI assistance is unavailable right now. Please try again shortly.';
+
 export async function continueConversation(reportId, farmerId, userMessage, farmerPreferredLanguage) {
   const language = farmerPreferredLanguage === 'hi' ? 'Hindi' : 'English';
   const now = Date.now();
 
+  let conversation;
   try {
-    let conversation = await db.execute({
+    conversation = await db.execute({
       sql: 'SELECT * FROM pashu_ai_conversations WHERE report_id = ? AND farmer_id = ?',
       args: [reportId, farmerId],
     });
+  } catch (error) {
+    console.error('[aiAdvisory] conversation lookup failed:', error?.message ?? error);
+    return UNAVAILABLE_REPLY;
+  }
 
-    let fullHistory;
-    if (conversation.rows.length === 0) {
-      fullHistory = [];
-    } else {
+  let fullHistory;
+  if (conversation.rows.length === 0) {
+    fullHistory = [];
+  } else {
+    try {
       fullHistory = JSON.parse(conversation.rows[0].full_history);
+    } catch {
+      fullHistory = [];
     }
+  }
 
-    // Append the new user message to the full history
-    fullHistory.push({ role: 'user', content: userMessage });
+  // Append the new user message to the full history (always persisted below,
+  // even if the Groq call fails, so the conversation is never lost).
+  fullHistory.push({ role: 'user', content: userMessage });
 
+  let assistantReply = '';
+  try {
     // Cap context: only send the last 10 messages to Groq
     const cappedContext = fullHistory.slice(-10);
     const messages = [
@@ -115,11 +129,19 @@ export async function continueConversation(reportId, farmerId, userMessage, farm
       max_tokens: 500,
     });
 
-    const assistantReply = completion.choices[0]?.message?.content ?? '';
+    assistantReply = completion.choices[0]?.message?.content ?? '';
+  } catch (error) {
+    console.error('[aiAdvisory] Groq call failed:', error?.message ?? error);
+  }
 
-    // Append assistant reply to full history
-    fullHistory.push({ role: 'assistant', content: assistantReply });
+  if (!assistantReply.trim()) {
+    assistantReply = UNAVAILABLE_REPLY;
+  }
 
+  // Always append + persist, so the conversation stays coherent and survives reloads.
+  fullHistory.push({ role: 'assistant', content: assistantReply });
+
+  try {
     const historyStr = JSON.stringify(fullHistory);
 
     if (conversation.rows.length === 0) {
@@ -136,10 +158,9 @@ export async function continueConversation(reportId, farmerId, userMessage, farm
         args: [historyStr, now, conversation.rows[0].id],
       });
     }
-
-    return assistantReply;
   } catch (error) {
-    console.error('[aiAdvisory] continueConversation failed:', error?.message ?? error);
-    return null;
+    console.error('[aiAdvisory] conversation save failed:', error?.message ?? error);
   }
+
+  return assistantReply;
 }
