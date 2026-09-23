@@ -17,6 +17,13 @@ const TABS = [
 
 export default function Dashboard({ magistrate }) {
   const [tab, setTab] = useState('overview')
+  // Bumped after approve/reject so Overview refetches when the user returns.
+  const [overviewVersion, setOverviewVersion] = useState(0)
+
+  function onApplicationReviewed() {
+    setOverviewVersion((n) => n + 1)
+    // Applications tab reloads itself after a successful review.
+  }
 
   return (
     <div className="dashboard">
@@ -35,8 +42,10 @@ export default function Dashboard({ magistrate }) {
       </nav>
 
       <section className="tab-panel" role="tabpanel">
-        {tab === 'overview' && <OverviewTab />}
-        {tab === 'applications' && <ApplicationsTab magistrate={magistrate} />}
+        {tab === 'overview' && <OverviewTab refreshKey={overviewVersion} />}
+        {tab === 'applications' && (
+          <ApplicationsTab magistrate={magistrate} onReviewed={onApplicationReviewed} />
+        )}
         {tab === 'reports' && <ReportsTab />}
         {tab === 'clusters' && <ClustersTab />}
         {tab === 'alerts' && <GovAlertsTab />}

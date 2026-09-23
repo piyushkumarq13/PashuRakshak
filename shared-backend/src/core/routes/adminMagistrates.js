@@ -25,7 +25,12 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/** POST /api/v1/core/admin/magistrates  Body: { email, name, district, state? } */
+/**
+ * POST /api/v1/core/admin/magistrates
+ * Body: { email, name, district, state? }
+ * Upserts: if the email already exists, name/district/state are updated
+ * (so district routing can be fixed without deleting the login account).
+ */
 router.post('/admin/magistrates', adminSecret, async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const name = str(req.body?.name);
@@ -43,9 +48,18 @@ router.post('/admin/magistrates', adminSecret, async (req, res) => {
   }
 
   try {
-    const existing = await db.execute({ sql: 'SELECT id FROM gov_magistrates WHERE email = ?', args: [email] });
+    const existing = await db.execute({ sql: 'SELECT id, created_at FROM gov_magistrates WHERE email = ?', args: [email] });
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'email_taken', message: 'A magistrate with this email already exists.' });
+      const id = existing.rows[0].id;
+      const createdAt = existing.rows[0].created_at;
+      await db.execute({
+        sql: 'UPDATE gov_magistrates SET name = ?, district = ?, state = ? WHERE id = ?',
+        args: [name, district, state, id],
+      });
+      return res.status(200).json({
+        updated: true,
+        magistrate: { id, email, name, district, state: state ?? null, createdAt },
+      });
     }
 
     const id = randomUUID();

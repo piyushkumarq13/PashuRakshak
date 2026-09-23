@@ -7,8 +7,8 @@ import { getActiveClusters } from '../../modules/pashu-health/services/clusterDe
  * Government / District Magistrate data access.
  *
  * Mounted at /api/v1/gov with X-App-Key (routes.js) and, inside the router,
- * a gov session token. Applications are scoped to the magistrate's district;
- * all other platform data is available in full.
+ * a gov session token. Applications are scoped to the magistrate's district
+ * (district `*` or `all` = every district); all other platform data is full.
  */
 
 const router = Router();
@@ -21,13 +21,66 @@ function str(value) {
   return text === '' ? null : text;
 }
 
-/** GET /api/v1/gov/overview — platform-wide counts for the dashboard. */
-router.get('/overview', async (_req, res) => {
+/**
+ * Loads the magistrate row so district changes (admin upsert) apply without
+ * forcing a re-login — the session token alone can go stale.
+ */
+async function loadMagistrateDistrict(req) {
+  if (req.magistrateId) {
+    try {
+      const row = await db.execute({
+        sql: 'SELECT district FROM gov_magistrates WHERE id = ?',
+        args: [req.magistrateId],
+      });
+      const district = row.rows[0]?.district;
+      if (district !== undefined && district !== null) {
+        req.session = { ...req.session, district };
+      }
+    } catch (error) {
+      console.warn('[gov] magistrate district lookup failed, using session:', error?.message ?? error);
+    }
+  }
+  return req.session;
+}
+
+/** Case/space-insensitive district key so "Central Delhi" matches "central delhi". */
+function districtKey(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/** True when the magistrate covers every district. */
+function seesAllDistricts(session) {
+  const d = districtKey(session.district);
+  return d === '' || d === '*' || d === 'all' || d === 'every district';
+}
+
+/** District-scoped application filter for SQL args (or null = no district filter). */
+function applicationDistrictFilter(session) {
+  if (seesAllDistricts(session)) return null;
+  return str(session.district);
+}
+
+/**
+ * GET /api/v1/gov/overview — platform-wide counts + district-scoped
+ * vet-application counts (so the list and the badges always agree).
+ */
+router.get('/overview', async (req, res) => {
   try {
+    await loadMagistrateDistrict(req);
+    const districtFilter = applicationDistrictFilter(req.session);
+    const appCountSql = districtFilter
+      ? `SELECT status, COUNT(*) AS c FROM vet_applications
+         WHERE LOWER(TRIM(district)) = LOWER(TRIM(?)) GROUP BY status`
+      : `SELECT status, COUNT(*) AS c FROM vet_applications GROUP BY status`;
+    const appCountArgs = districtFilter ? [districtFilter] : [];
+
     const [farmers, vets, apps, reports, govAlerts, alerts] = await Promise.all([
       db.execute(`SELECT COUNT(*) AS c FROM users WHERE role = 'farmer'`),
       db.execute(`SELECT COUNT(*) AS c FROM users WHERE role = 'vet'`),
-      db.execute(`SELECT status, COUNT(*) AS c FROM vet_applications GROUP BY status`),
+      db.execute({ sql: appCountSql, args: appCountArgs }),
       db.execute(`SELECT status, COUNT(*) AS c FROM pashu_symptom_reports GROUP BY status`),
       db.execute(`SELECT acknowledged, COUNT(*) AS c FROM pashu_gov_alerts GROUP BY acknowledged`),
       db.execute(`SELECT COUNT(*) AS c FROM pashu_alerts`),
@@ -39,10 +92,10 @@ router.get('/overview', async (_req, res) => {
     const reportCounts = {};
     for (const row of reports.rows) reportCounts[row.status] = Number(row.c);
 
-    let govAlertCounts = { acknowledged: 0, unacknowledged: 0 };
+    const govAlertCounts = { acknowledged: 0, unacknowledged: 0 };
     for (const row of govAlerts.rows) {
-      if (Number(row.acknowledged) === 1) govAlertCounts.acknowledged = Number(row.c);
-      else govAlertCounts.unacknowledged = Number(row.c);
+      if (Number(row.acknowledged) === 1) govAlertCounts.acknowledged += Number(row.c);
+      else govAlertCounts.unacknowledged += Number(row.c);
     }
 
     const clusters = await getActiveClusters();
@@ -57,6 +110,7 @@ router.get('/overview', async (_req, res) => {
         activeClusters: clusters.length,
         govAlerts: govAlertCounts,
         alertsTotal: Number(alerts.rows[0]?.c ?? 0),
+        district: districtFilter ?? '*',
       },
     });
   } catch (error) {
@@ -68,6 +122,7 @@ router.get('/overview', async (_req, res) => {
 /**
  * GET /api/v1/gov/vet-applications?status=pending|approved|rejected|all
  * Scoped to the signed-in magistrate's district (default: pending).
+ * District match is case-insensitive; magistrate district `*` sees all.
  */
 router.get('/vet-applications', async (req, res) => {
   const status = str(req.query.status) ?? 'pending';
@@ -77,15 +132,35 @@ router.get('/vet-applications', async (req, res) => {
   }
 
   try {
-    const district = req.session.district;
-    const sql =
-      status === 'all'
-        ? `SELECT * FROM vet_applications WHERE district = ? ORDER BY created_at DESC`
-        : `SELECT * FROM vet_applications WHERE district = ? AND status = ? ORDER BY created_at DESC`;
-    const args = status === 'all' ? [district] : [district, status];
+    await loadMagistrateDistrict(req);
+    const districtFilter = applicationDistrictFilter(req.session);
+    let sql;
+    let args;
+
+    if (districtFilter) {
+      // Case-insensitive match without requiring identical casing in the DB.
+      sql =
+        status === 'all'
+          ? `SELECT * FROM vet_applications
+             WHERE LOWER(TRIM(district)) = LOWER(TRIM(?))
+             ORDER BY created_at DESC`
+          : `SELECT * FROM vet_applications
+             WHERE LOWER(TRIM(district)) = LOWER(TRIM(?)) AND status = ?
+             ORDER BY created_at DESC`;
+      args = status === 'all' ? [districtFilter] : [districtFilter, status];
+    } else {
+      sql =
+        status === 'all'
+          ? `SELECT * FROM vet_applications ORDER BY created_at DESC`
+          : `SELECT * FROM vet_applications WHERE status = ? ORDER BY created_at DESC`;
+      args = status === 'all' ? [] : [status];
+    }
 
     const result = await db.execute({ sql, args });
-    return res.status(200).json({ applications: result.rows, district });
+    return res.status(200).json({
+      applications: result.rows,
+      district: districtFilter ?? '*',
+    });
   } catch (error) {
     console.error('[gov/vet-applications] list failed:', error);
     return res.status(500).json({ error: 'list_failed', message: 'Could not list applications.' });
@@ -101,12 +176,16 @@ async function reviewApplication(req, res, nextStatus) {
   const note = str(req.body?.note);
 
   try {
+    await loadMagistrateDistrict(req);
     const result = await db.execute({ sql: 'SELECT * FROM vet_applications WHERE id = ?', args: [applicationId] });
     const application = result.rows[0];
     if (!application) {
       return res.status(404).json({ error: 'not_found', message: 'Application not found.' });
     }
-    if (application.district !== req.session.district) {
+    if (
+      !seesAllDistricts(req.session) &&
+      districtKey(application.district) !== districtKey(req.session.district)
+    ) {
       return res.status(403).json({
         error: 'wrong_district',
         message: `This application belongs to ${application.district}, not your district (${req.session.district}).`,
@@ -140,10 +219,20 @@ router.post('/vet-applications/:id/approve', (req, res) => reviewApplication(req
 /** POST /api/v1/gov/vet-applications/:id/reject  Body: { note } (note recommended) */
 router.post('/vet-applications/:id/reject', (req, res) => reviewApplication(req, res, 'rejected'));
 
-/** GET /api/v1/gov/reports — every symptom report (full data access). */
+/**
+ * GET /api/v1/gov/reports — every symptom report with animal species joined
+ * so the portal table has a real animal column.
+ */
 router.get('/reports', async (_req, res) => {
   try {
-    const result = await db.execute('SELECT * FROM pashu_symptom_reports ORDER BY created_at DESC');
+    const result = await db.execute(`
+      SELECT p.*,
+             a.species AS animal_species,
+             a.name AS animal_name,
+             a.qr_code_id AS animal_qr_code_id
+      FROM pashu_symptom_reports p
+      LEFT JOIN pashu_animals a ON a.id = p.animal_id
+      ORDER BY p.created_at DESC`);
     return res.status(200).json({ reports: result.rows });
   } catch (error) {
     console.error('[gov/reports] list failed:', error);

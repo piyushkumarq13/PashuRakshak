@@ -119,8 +119,13 @@ curl -X POST http://localhost:3000/api/v1/core/admin/magistrates \
   -d '{"email":"dm@example.gov.in","name":"District Magistrate","district":"Jaipur","state":"Rajasthan"}'
 ```
 
+Upserts by email (re-posting updates `name` / `district` / `state` without
+changing the login). Use `"district":"*"` (or `"all"`) so one magistrate can
+review applications from every district.
+
 Also: `GET /admin/magistrates` (list), `DELETE /admin/magistrates/:id`.
 Magistrates live in the standalone `gov_magistrates` table (session `role='gov'`).
+District is re-read from the DB on each gov request (session token alone can go stale).
 
 ### Vet applications (routed by pincode → district)
 
@@ -135,11 +140,11 @@ All `/api/v1/pashu-health/vet-applications/*` routes require a **vet** session:
 
 | Method & path | Purpose |
 |---|---|
-| `GET /gov/overview` | Platform counts (farmers, vets, applications by status, reports, clusters, alerts) |
-| `GET /gov/vet-applications?status=pending\|approved\|rejected\|all` | Applications in **the magistrate's district** |
+| `GET /gov/overview` | Platform counts + district-scoped application counts (farmers, vets, applications by status, reports, clusters, alerts) |
+| `GET /gov/vet-applications?status=pending\|approved\|rejected\|all` | Applications in **the magistrate's district** (case-insensitive; district `*` = all) |
 | `POST /gov/vet-applications/:id/approve` | Body `{ note? }` — district-checked |
 | `POST /gov/vet-applications/:id/reject` | Body `{ note }` — district-checked |
-| `GET /gov/reports` | All symptom reports |
+| `GET /gov/reports` | All symptom reports (animal species joined) |
 | `GET /gov/clusters` | Active outbreak clusters |
 | `GET /gov/gov-alerts` | Government alerts from risky visits |
 | `POST /gov/gov-alerts/:id/acknowledge` | Mark acknowledged |

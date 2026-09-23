@@ -62,8 +62,11 @@ export default function GovAlertsTab() {
           return (
             <div key={a.id} className={`alert-item ${acked ? 'alert-acked' : ''}`}>
               <div>
-                <strong>{a.title ?? a.message ?? 'Alert'}</strong>
-                <div className="muted small">{a.detail ?? a.body ?? ''}</div>
+                <strong>{a.message ?? a.title ?? a.body ?? 'Alert'}</strong>
+                <div className="muted small">
+                  {a.severity ? `Severity: ${a.severity}` : ''}
+                  {a.report_id ? ` · report ${a.report_id}` : ''}
+                </div>
                 <div className="muted small">{fmtDate(a.created_at)}</div>
               </div>
               <div className="alert-right">

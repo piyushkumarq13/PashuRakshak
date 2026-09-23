@@ -1,8 +1,37 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getReports } from '../api'
+
+const STATUS_FILTERS = [
+  'all',
+  'reported',
+  'vet_assigned',
+  'examined',
+  'sample_sent',
+  'confirmed',
+  'resolved',
+]
 
 function fmtDate(ms) {
   return ms ? new Date(Number(ms)).toLocaleString() : '—'
+}
+
+function severityFor(r) {
+  if (r.ai_risk_category) return r.ai_risk_category
+  const score = Number(r.risk_score ?? 0)
+  if (score >= 60) return 'high'
+  if (score >= 30) return 'mid'
+  return 'low'
+}
+
+function symptomsText(r) {
+  const raw = r.symptoms ?? '[]'
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (Array.isArray(arr)) return arr.join(', ')
+  } catch {
+    /* plain string */
+  }
+  return String(raw || '—')
 }
 
 export default function ReportsTab() {
@@ -11,23 +40,21 @@ export default function ReportsTab() {
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('all')
 
-  useEffect(() => {
-    let cancelled = false
+  const load = useCallback(async () => {
     setLoading(true)
-    getReports().then(({ status, data }) => {
-      if (cancelled) return
-      if (status === 200) {
-        setReports(data.reports ?? [])
-        setError('')
-      } else {
-        setError(data.message || 'Could not load reports.')
-      }
-      setLoading(false)
-    })
-    return () => {
-      cancelled = true
+    const { status, data } = await getReports()
+    if (status === 200) {
+      setReports(data.reports ?? [])
+      setError('')
+    } else {
+      setError(data.message || 'Could not load reports.')
     }
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   const filtered = filter === 'all' ? reports : reports.filter((r) => r.status === filter)
 
@@ -39,7 +66,7 @@ export default function ReportsTab() {
           <p className="muted">{reports.length} total</p>
         </div>
         <div className="filter-row">
-          {['all', 'pending', 'assigned', 'resolved'].map((s) => (
+          {STATUS_FILTERS.map((s) => (
             <button
               key={s}
               className={`chip ${filter === s ? 'chip-active' : ''}`}
@@ -48,6 +75,9 @@ export default function ReportsTab() {
               {s}
             </button>
           ))}
+          <button className="btn-secondary" onClick={load} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
       </div>
 
@@ -66,24 +96,22 @@ export default function ReportsTab() {
               <th>Symptoms</th>
               <th>Village</th>
               <th>Status</th>
-              <th>Severity</th>
+              <th>Risk</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((r) => (
               <tr key={r.id}>
                 <td>{fmtDate(r.created_at)}</td>
-                <td>{r.animal_type ?? r.animalType ?? '—'}</td>
-                <td className="cell-truncate">
-                  {r.symptoms ?? r.symptom_text ?? r.symptoms_text ?? '—'}
-                </td>
+                <td>{r.animal_species ?? r.animal_type ?? r.animalType ?? '—'}</td>
+                <td className="cell-truncate">{symptomsText(r)}</td>
                 <td>{r.village ?? '—'}</td>
                 <td>
                   <span className={`status-badge status-${r.status ?? 'none'}`}>
                     {r.status ?? 'unknown'}
                   </span>
                 </td>
-                <td>{r.severity ?? '—'}</td>
+                <td>{severityFor(r)}</td>
               </tr>
             ))}
           </tbody>

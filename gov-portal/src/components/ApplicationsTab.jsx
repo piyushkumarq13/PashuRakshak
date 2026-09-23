@@ -7,7 +7,7 @@ function fmtDate(ms) {
   return ms ? new Date(Number(ms)).toLocaleString() : '—'
 }
 
-export default function ApplicationsTab({ magistrate }) {
+export default function ApplicationsTab({ magistrate, onReviewed }) {
   const [status, setStatus] = useState('pending')
   const [applications, setApplications] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,18 +16,21 @@ export default function ApplicationsTab({ magistrate }) {
   const [note, setNote] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [actionError, setActionError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [serverDistrict, setServerDistrict] = useState(magistrate?.district ?? '')
 
   const load = useCallback(async (filter) => {
     setLoading(true)
     const { status: code, data } = await getVetApplications(filter)
     if (code === 200) {
       setApplications(data.applications ?? [])
+      setServerDistrict(data.district ?? magistrate?.district ?? '')
       setError('')
     } else {
       setError(data.message || 'Could not load applications.')
     }
     setLoading(false)
-  }, [])
+  }, [magistrate?.district])
 
   useEffect(() => {
     load(status)
@@ -41,6 +44,7 @@ export default function ApplicationsTab({ magistrate }) {
 
   async function review(app, action) {
     setActionError('')
+    setSuccess('')
     if (action === 'reject' && !note.trim()) {
       setActionError('Add a note explaining the rejection.')
       return
@@ -51,19 +55,27 @@ export default function ApplicationsTab({ magistrate }) {
     if (code === 200) {
       setExpandedId(null)
       setNote('')
-      load(status)
+      setSuccess(
+        action === 'approve'
+          ? `${app.full_name} approved. They can now sign in to the Vet App.`
+          : `${app.full_name} rejected.`,
+      )
+      await load(status)
+      onReviewed?.()
     } else {
       setActionError(data.message || 'Could not update the application.')
     }
   }
 
   let areas = []
+  const districtLabel =
+    serverDistrict === '*' ? 'all districts' : serverDistrict || magistrate?.district || 'your district'
   return (
     <div className="card">
       <div className="tab-header">
         <div>
-          <h2>Vet applications — {magistrate.district}</h2>
-          <p className="muted">Applications routed to your district by pincode.</p>
+          <h2>Vet applications — {districtLabel}</h2>
+          <p className="muted">Applications routed to your district by pincode (case-insensitive match).</p>
         </div>
         <div className="filter-row">
           {STATUS_FILTERS.map((s) => (
@@ -75,13 +87,22 @@ export default function ApplicationsTab({ magistrate }) {
               {s}
             </button>
           ))}
+          <button className="btn-secondary" onClick={() => load(status)} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
       </div>
 
       {loading && <p className="muted">Loading…</p>}
       {error && <p className="error">{error}</p>}
+      {success && <p className="success">{success}</p>}
       {!loading && !error && applications.length === 0 && (
-        <p className="muted">No {status === 'all' ? '' : status} applications in your district.</p>
+        <p className="muted">
+          No {status === 'all' ? '' : status} applications in {districtLabel}.
+          {status === 'pending' && serverDistrict !== '*' && serverDistrict !== '' && (
+            <> If applicants used another district’s pincode, sign in as that district’s magistrate or set district to *.</>
+          )}
+        </p>
       )}
 
       <div className="app-list">

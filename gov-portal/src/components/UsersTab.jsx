@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getUsers } from '../api'
 
 function fmtDate(ms) {
@@ -11,23 +11,21 @@ export default function UsersTab() {
   const [error, setError] = useState('')
   const [role, setRole] = useState('farmers')
 
-  useEffect(() => {
-    let cancelled = false
+  const load = useCallback(async () => {
     setLoading(true)
-    getUsers().then(({ status, data }) => {
-      if (cancelled) return
-      if (status === 200) {
-        setUsers({ farmers: data.farmers ?? [], vets: data.vets ?? [] })
-        setError('')
-      } else {
-        setError(data.message || 'Could not load users.')
-      }
-      setLoading(false)
-    })
-    return () => {
-      cancelled = true
+    const { status, data } = await getUsers()
+    if (status === 200) {
+      setUsers({ farmers: data.farmers ?? [], vets: data.vets ?? [] })
+      setError('')
+    } else {
+      setError(data.message || 'Could not load users.')
     }
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   const rows = users[role]
 
@@ -52,6 +50,9 @@ export default function UsersTab() {
             onClick={() => setRole('vets')}
           >
             Vets
+          </button>
+          <button className="btn-secondary" onClick={load} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </div>

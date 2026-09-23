@@ -228,7 +228,7 @@ export default function App() {
         )}
 
         {stage === 'application' && (
-          <ApplicationForm existing={null} onSubmitted={handleSubmitted} />
+          <ApplicationForm existing={application} onSubmitted={handleSubmitted} />
         )}
 
         {stage === 'status' && application && (
