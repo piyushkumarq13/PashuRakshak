@@ -10,8 +10,11 @@ const app = express();
 app.use(
   cors({
     origin(origin, callback) {
-      // No Origin header (curl, server-to-server) or an allow-listed origin → allow.
-      if (!origin || env.corsAllowedOrigins.includes(origin)) {
+      // No Origin header (curl, server-to-server) → allow.
+      // "*" in CORS_ALLOWED_ORIGINS → allow every browser origin.
+      // Otherwise the origin must be in the allow-list.
+      const allowAll = env.corsAllowedOrigins.includes('*');
+      if (!origin || allowAll || env.corsAllowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(null, false);

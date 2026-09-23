@@ -18,14 +18,23 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   if (auth && token) headers['Authorization'] = `Bearer ${token}`
   if (body) headers['Content-Type'] = 'application/json'
 
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  })
-
-  const data = await res.json().catch(() => ({}))
-  return { status: res.status, data }
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    const data = await res.json().catch(() => ({}))
+    return { status: res.status, data }
+  } catch {
+    return {
+      status: 0,
+      data: {
+        error: 'network_error',
+        message: 'Could not reach the server. Check your connection and try again.',
+      },
+    }
+  }
 }
 
 /* ── Auth (email OTP + PIN/password — no Firebase) ── */

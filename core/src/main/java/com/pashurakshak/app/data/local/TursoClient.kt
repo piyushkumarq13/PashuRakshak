@@ -74,7 +74,17 @@ class TursoClient(context: Context) {
             .filter { it.version > current }
             .sortedBy { it.version }
             .forEach { migration ->
-                connection.executeBatch(migration.sql)
+                try {
+                    connection.executeBatch(migration.sql)
+                } catch (e: Exception) {
+                    // INITIAL_SCHEMA already includes later ALTER columns
+                    // (assigned_vet_id, etc.). Fresh installs create them in
+                    // v1, then v3's ALTER fails — treat as already applied so
+                    // the app doesn't crash with "duplicate column name".
+                    val duplicateColumn = e.message
+                        ?.contains("duplicate column", ignoreCase = true) == true
+                    if (!duplicateColumn) throw e
+                }
                 connection.execute("PRAGMA user_version = ${migration.version}")
             }
     }

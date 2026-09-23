@@ -18,6 +18,9 @@ services:
       - key: SESSION_SECRET
         sync: false
       - key: CORS_ALLOWED_ORIGINS
+        # "*" allows every origin (the server treats a literal * as allow-all).
+        # Replace with your exact web URLs once they are final, e.g.
+        # https://gov-portal-xxxx.onrender.com,https://vet-registration-xxxx.onrender.com
         value: "*"
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
