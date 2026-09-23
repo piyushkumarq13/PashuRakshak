@@ -65,14 +65,15 @@ class ReportRepository(private val db: TursoClient) {
         ) { it.toReport() }
 
     /**
-     * Unsynced reports that have a local photo but no remote URL yet —
-     * the B2 photo-upload queue (feeds into the Phase 7 sync flow).
+     * Reports with a local photo but no remote URL yet —
+     * the B2 photo-upload queue (feeds into the sync flow).
+     * Includes reports regardless of synced flag so retried failures eventually succeed.
      */
     suspend fun getReportsPendingPhotoUpload(): List<SymptomReport> =
         db.query(
             """
             SELECT * FROM symptom_reports
-            WHERE synced = 0 AND photo_local_path != ''
+            WHERE photo_local_path != ''
               AND (photo_remote_url IS NULL OR photo_remote_url = '')
             ORDER BY created_at ASC
             """.trimIndent(),

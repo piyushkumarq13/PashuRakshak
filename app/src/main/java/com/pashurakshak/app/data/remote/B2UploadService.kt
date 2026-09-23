@@ -13,6 +13,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
+import java.net.URLEncoder
+
 /**
  * Uploads symptom-report photos to Backblaze B2 via the native API:
  * b2_authorize_account → b2_list_buckets(accountId) → b2_get_upload_url → b2_upload_file.
@@ -111,16 +113,19 @@ class B2UploadService(
      */
     fun buildDownloadUrl(fileUrl: String): String = fileUrl
 
-    /**
-     * Returns a URL that can be used in an <img>/AsyncImage tag by appending a
-     * download-authorization token as a query parameter for private buckets.
-     * Caches the token for [TOKEN_CACHE_DURATION_MS].
-     */
+/**
+      * Returns a display URL for a private-bucket file by appending a
+      * download-authorization token as a URL-encoded query parameter.
+      * Caches the token for [TOKEN_CACHE_DURATION_MS].
+      */
     suspend fun withAuth(fileUrl: String): String {
         if (fileUrl.isBlank()) return fileUrl
         val token = getDownloadAuthToken() ?: return fileUrl
-        return if (fileUrl.contains("Authorization=")) fileUrl else "$fileUrl?Authorization=$token"
+        return if (fileUrl.contains("Authorization=")) fileUrl else "$fileUrl?Authorization=${URLEncoder.encode(token, "UTF-8")}"
     }
+
+    /** Returns the cached download authorization token, fetching if needed. */
+    suspend fun getDownloadToken(): String? = getDownloadAuthToken()
 
     /** Cached download-authorization token (scoped to the `reports/` prefix). */
     private suspend fun getDownloadAuthToken(): String? = withContext(Dispatchers.IO) {
@@ -132,7 +137,7 @@ class B2UploadService(
             cachedDownloadToken = token
             cachedDownloadTokenExpiryMs = now + TOKEN_CACHE_DURATION_MS
             token
-        } catch (_: Exception) { null }
+        } catch (e: Exception) { null }
     }
 
     private suspend fun requestDownloadAuth(auth: Auth): String = withContext(Dispatchers.IO) {

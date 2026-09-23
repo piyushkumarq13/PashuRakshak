@@ -33,22 +33,27 @@ fun ReportPhoto(
     val context = LocalContext.current
     val b2 = remember { ServiceLocator.b2UploadService }
     var displayUrl by remember { mutableStateOf<String?>(null) }
+    var loadError by remember { mutableStateOf(false) }
 
     val effectiveRemote = remoteUrl ?: report?.photoRemoteUrl
 
     LaunchedEffect(effectiveRemote) {
-        displayUrl = if (!effectiveRemote.isNullOrBlank()) {
-            b2.withAuth(effectiveRemote)
+        if (!effectiveRemote.isNullOrBlank()) {
+            displayUrl = b2.withAuth(effectiveRemote)
+            loadError = false
         } else {
-            null
+            displayUrl = null
+            loadError = false
         }
     }
 
-    val model = remember(displayUrl, localPath) {
-        when {
-            displayUrl != null -> ImageRequest.Builder(context).data(displayUrl).build()
-            localPath.isNotBlank() -> File(localPath)
-            else -> null
+    val model = remember(displayUrl, localPath, loadError) {
+        if (displayUrl != null && !loadError) {
+            ImageRequest.Builder(context).data(displayUrl).build()
+        } else if (localPath.isNotBlank()) {
+            File(localPath)
+        } else {
+            null
         }
     }
 
