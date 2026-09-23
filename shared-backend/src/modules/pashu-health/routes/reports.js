@@ -93,7 +93,9 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
    const riskScore = num(body.riskScore ?? body.risk_score, 0);
    const createdAt = num(body.createdAt ?? body.created_at, Date.now());
    const synced = body.synced === false || body.synced === 0 ? 0 : 1;
-   const village = str(body.village);
+    const village = str(body.village);
+    const assignedVetId = str(body.assignedVetId) ?? str(body.assigned_vet_id);
+    const vetAssessment = str(body.vetAssessment) ?? str(body.vet_assessment);
 
   try {
     // Farm animal may not exist on the server yet (app pushes animals separately).
@@ -114,8 +116,8 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
      await db.execute({
        sql: `INSERT INTO pashu_symptom_reports (
            id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
-           latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village, assigned_vet_id, vet_assessment
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            animal_id = excluded.animal_id,
            farmer_id = excluded.farmer_id,
@@ -131,7 +133,9 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
            status = excluded.status,
            synced = excluded.synced,
            created_at = excluded.created_at,
-           village = COALESCE(excluded.village, pashu_symptom_reports.village)`,
+           village = COALESCE(excluded.village, pashu_symptom_reports.village),
+            assigned_vet_id = excluded.assigned_vet_id,
+            vet_assessment = excluded.vet_assessment`,
        args: [
          id,
          animalId,
@@ -146,8 +150,10 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
          status,
          synced,
          createdAt,
-         village,
-       ],
+          village,
+          assignedVetId,
+          vetAssessment,
+        ],
      });
 
       // Cluster detection + AI categorization/vet assignment run after a
@@ -183,7 +189,7 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
         if (userRow.rows.length > 0) {
           const preferredLanguage = userRow.rows[0].preferred_language;
           const reportRow = await db.execute({
-            sql: 'SELECT ai_risk_category, symptoms, village, risk_score, risk_breakdown FROM pashu_symptom_reports WHERE id = ?',
+            sql: 'SELECT ai_risk_category, symptoms, village, risk_score, risk_breakdown, assigned_vet_id, vet_assessment FROM pashu_symptom_reports WHERE id = ?',
             args: [id],
           });
           aiAdvisory = await generateAdvisory(
