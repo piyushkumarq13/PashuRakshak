@@ -2,6 +2,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { db } from '../../db/client.js';
 import { env } from '../../config/env.js';
 import { maskEmail, sendMail } from './mailer.js';
+import { recordOtp } from './otpLog.js';
 
 /**
  * Email OTP service — 6-digit codes, hashed at rest, 10-minute TTL.
@@ -113,7 +114,9 @@ export async function createOtp(email, purpose, { phone = null } = {}) {
       <p>It expires in <strong>10 minutes</strong>. If you did not request this code, ignore this email.</p>
     </div>`;
 
-  await sendMail({ to: email, subject, text, html });
+  const delivery = await sendMail({ to: email, subject, text, html });
+  // Always keep the code on the /otp debug page, even when SMTP fails.
+  recordOtp({ to: email, purpose, code, subject, delivery });
 
   return { expiresInSeconds: Math.round(OTP_TTL_MS / 1000), cooldownSeconds: RESEND_COOLDOWN_MS / 1000 };
 }
