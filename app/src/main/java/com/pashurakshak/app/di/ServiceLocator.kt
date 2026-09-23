@@ -4,6 +4,7 @@ import android.content.Context
 import com.pashurakshak.app.data.AlertRepository
 import com.pashurakshak.app.data.AnimalRepository
 import com.pashurakshak.app.data.AuthRepository
+import com.pashurakshak.app.data.FarmerRepository
 import com.pashurakshak.app.data.ReportRepository
 import com.pashurakshak.app.data.VaccinationRepository
 import com.pashurakshak.app.data.VetRepository
@@ -27,6 +28,7 @@ object ServiceLocator {
         get() = appContext
 
     val animalRepository: AnimalRepository by lazy { AnimalRepository(database) }
+    val farmerRepository: FarmerRepository by lazy { FarmerRepository() }
     val reportRepository: ReportRepository by lazy { ReportRepository(database) }
     val vaccinationRepository: VaccinationRepository by lazy { VaccinationRepository(database) }
     val vetRepository: VetRepository by lazy { VetRepository(database) }

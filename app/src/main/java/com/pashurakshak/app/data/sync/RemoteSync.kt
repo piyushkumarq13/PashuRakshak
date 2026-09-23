@@ -178,6 +178,8 @@ object RemoteSync {
                         }.getOrDefault(ReportStatus.REPORTED),
                         synced = true,
                         createdAt = row.optLong("created_at", System.currentTimeMillis()),
+                        village = row.optString("village", ""),
+                        aiAdvisory = row.optString("aiAdvisory").takeIf { it.isNotBlank() },
                     ),
                 )
             }.onFailure { Log.w(TAG, "report pull row failed: ${it.message}") }

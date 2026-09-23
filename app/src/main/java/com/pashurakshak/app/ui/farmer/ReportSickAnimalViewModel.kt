@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pashurakshak.app.data.AlertRepository
 import com.pashurakshak.app.data.AnimalRepository
+import com.pashurakshak.app.data.FarmerRepository
 import com.pashurakshak.app.data.ReportRepository
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.data.local.Alert
 import com.pashurakshak.app.data.local.Animal
 import com.pashurakshak.app.data.local.ReportStatus
 import com.pashurakshak.app.data.local.SymptomReport
+import com.pashurakshak.app.data.remote.ReportPushApi
 import com.pashurakshak.app.data.sync.SyncScheduler
 import com.pashurakshak.app.di.ServiceLocator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,10 +29,6 @@ enum class Symptom(val label: String, val basePoints: Int) {
     MOUTH_PROBLEM("Mouth Problem", 0),
 }
 
-/**
- * Placeholder client-side weighting — refined server-side later.
- * Fever +20, Less Milk +15, +10 for each additional symptom beyond the first.
- */
 internal fun calculateRiskScore(symptoms: Collection<Symptom>): Int {
     if (symptoms.isEmpty()) return 0
     val base = symptoms.sumOf { it.basePoints }
@@ -40,15 +38,19 @@ internal fun calculateRiskScore(symptoms: Collection<Symptom>): Int {
 
 data class ReportSickAnimalUiState(
     val isLoadingAnimals: Boolean = true,
+    val isLoadingProfile: Boolean = true,
     val animals: List<Animal> = emptyList(),
     val selectedAnimalId: String? = null,
     val selectedSymptoms: Set<Symptom> = emptySet(),
     val photoPath: String? = null,
     val latitudeText: String = "",
     val longitudeText: String = "",
+    val villageText: String = "",
     val isSubmitting: Boolean = false,
     val submitted: Boolean = false,
     val error: String? = null,
+    val aiAdvisory: String? = null,
+    val lastReportId: String? = null,
 ) {
     val latitude: Double? get() = latitudeText.toDoubleOrNull()?.takeIf { it in -90.0..90.0 }
     val longitude: Double? get() = longitudeText.toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
@@ -58,6 +60,7 @@ data class ReportSickAnimalUiState(
             selectedSymptoms.isNotEmpty() &&
             latitude != null &&
             longitude != null &&
+            villageText.isNotBlank() &&
             !isSubmitting
 }
 
@@ -73,9 +76,10 @@ class ReportSickAnimalViewModel(
 
     init {
         loadAnimals()
+        loadFarmerProfile()
     }
 
-    fun loadAnimals() {
+    private fun loadAnimals() {
         viewModelScope.launch {
             runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
             runCatching {
@@ -86,6 +90,30 @@ class ReportSickAnimalViewModel(
                 _uiState.update {
                     it.copy(isLoadingAnimals = false, error = error.message ?: "Failed to load animals")
                 }
+            }
+        }
+    }
+
+    private fun loadFarmerProfile() {
+        viewModelScope.launch {
+            runCatching {
+                ServiceLocator.farmerRepository.getFarmerProfile()
+            }.onSuccess { result ->
+                when (result) {
+                    is FarmerRepository.ProfileResult.Success -> {
+                        val profile = result.profile
+                        if (profile != null) {
+                            _uiState.update { it.copy(villageText = profile.village, isLoadingProfile = false) }
+                        } else {
+                            _uiState.update { it.copy(isLoadingProfile = false) }
+                        }
+                    }
+                    is FarmerRepository.ProfileResult.Failure -> {
+                        _uiState.update { it.copy(isLoadingProfile = false, error = result.message) }
+                    }
+                }
+            }.onFailure {
+                _uiState.update { it.copy(isLoadingProfile = false) }
             }
         }
     }
@@ -128,6 +156,10 @@ class ReportSickAnimalViewModel(
         _uiState.update { it.copy(longitudeText = text) }
     }
 
+    fun onVillageChanged(text: String) {
+        _uiState.update { it.copy(villageText = text) }
+    }
+
     fun onLocationError(message: String) {
         _uiState.update { it.copy(error = message) }
     }
@@ -138,9 +170,10 @@ class ReportSickAnimalViewModel(
         val animalId = state.selectedAnimalId ?: return
         val latitude = state.latitude ?: return
         val longitude = state.longitude ?: return
+        val village = state.villageText
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSubmitting = true, error = null) }
+            _uiState.update { it.copy(isSubmitting = true, error = null, aiAdvisory = null) }
             runCatching {
                 val symptoms = Symptom.entries.filter { it in state.selectedSymptoms }
                 val riskScore = calculateRiskScore(symptoms)
@@ -151,22 +184,22 @@ class ReportSickAnimalViewModel(
                 }
                 val animal = state.animals.firstOrNull { it.id == animalId }
                 val animalLabel = animal?.let { "${it.name} (${it.species})" } ?: "animal"
-                reportRepository.insert(
-                    SymptomReport(
-                        animalId = animalId,
-                        farmerId = farmerId,
-                        symptoms = symptoms.map { it.label },
-                        photoLocalPath = state.photoPath.orEmpty(),
-                        photoRemoteUrl = null,
-                        latitude = latitude,
-                        longitude = longitude,
-                        riskScore = riskScore,
-                        riskBreakdown = breakdown,
-                        status = ReportStatus.REPORTED,
-                        synced = false,
-                    )
+                val report = SymptomReport(
+                    animalId = animalId,
+                    farmerId = farmerId,
+                    symptoms = symptoms.map { it.label },
+                    photoLocalPath = state.photoPath.orEmpty(),
+                    photoRemoteUrl = null,
+                    latitude = latitude,
+                    longitude = longitude,
+                    riskScore = riskScore,
+                    riskBreakdown = breakdown,
+                    status = ReportStatus.REPORTED,
+                    synced = false,
+                    village = village,
                 )
-                // Alerts are best-effort — a failed alert must not fail the report itself.
+                val reportId = report.id
+                reportRepository.insert(report)
                 runCatching {
                     alertRepository.insert(
                         Alert(
@@ -176,7 +209,6 @@ class ReportSickAnimalViewModel(
                                 "A vet will review it.",
                         ),
                     )
-                    // Placeholder HIGH threshold — matches RiskLevel.kt (>= 60).
                     if (riskScore >= 60) {
                         alertRepository.insert(
                             Alert(
@@ -187,10 +219,20 @@ class ReportSickAnimalViewModel(
                         )
                     }
                 }
-            }.onSuccess {
-                SyncScheduler.triggerNow(ServiceLocator.context)
-                _uiState.update { it.copy(isSubmitting = false, submitted = true) }
+                // Direct push to get aiAdvisory back immediately.
+                val pushResult = ServiceLocator.reportPushApi.pushReport(report)
+                when (pushResult) {
+                    is ReportPushApi.PushResult.Success -> {
+                        val aiAdvisory = pushResult.aiAdvisory
+                        _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = aiAdvisory, lastReportId = reportId) }
+                    }
+                    is ReportPushApi.PushResult.Failure -> {
+                        SyncScheduler.triggerNow(ServiceLocator.context)
+                        _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = null, lastReportId = reportId) }
+                    }
+                }
             }.onFailure { error ->
+                SyncScheduler.triggerNow(ServiceLocator.context)
                 _uiState.update {
                     it.copy(isSubmitting = false, error = error.message ?: "Failed to submit report")
                 }
@@ -203,11 +245,16 @@ class ReportSickAnimalViewModel(
             ReportSickAnimalUiState(
                 isLoadingAnimals = false,
                 animals = _uiState.value.animals,
+                villageText = _uiState.value.villageText,
             )
         }
     }
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun clearAiAdvisory() {
+        _uiState.update { it.copy(aiAdvisory = null) }
     }
 }

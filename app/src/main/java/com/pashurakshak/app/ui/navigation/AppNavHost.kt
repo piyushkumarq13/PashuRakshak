@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -12,11 +13,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.pashurakshak.app.data.FarmerRepository
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.navigation.Screen
 import com.pashurakshak.app.notifications.AppNotifications
 import com.pashurakshak.app.ui.FarmerHomeScreen
+import com.pashurakshak.app.ui.OnboardingScreen
 import com.pashurakshak.app.ui.RoleSelectScreen
 import com.pashurakshak.app.ui.VetHomeScreen
 import com.pashurakshak.app.ui.auth.OtpScreen
@@ -30,6 +33,7 @@ import com.pashurakshak.app.ui.farmer.MyAnimalsScreen
 import com.pashurakshak.app.ui.farmer.MyReportsScreen
 import com.pashurakshak.app.ui.farmer.QrPassportScreen
 import com.pashurakshak.app.ui.farmer.ReportSickAnimalScreen
+import com.pashurakshak.app.ui.aiInsight.AiInsightScreen
 import com.pashurakshak.app.ui.farmer.VaccinationStatusScreen
 import com.pashurakshak.app.ui.vet.CaseDetailScreen
 import com.pashurakshak.app.ui.vet.VetCaseQueueScreen
@@ -37,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AppNavHost(
@@ -114,6 +119,7 @@ fun AppNavHost(
                 )
             }
             composable(Screen.RoleSelect.route) {
+                val scope = rememberCoroutineScope()
                 RoleSelectScreen(
                     onRoleSelected = { role ->
                         SessionManager.completeLogin(role)
@@ -129,11 +135,38 @@ fun AppNavHost(
                                 }
                             }
                         }
-                        val destination = when (role) {
-                            SessionManager.Role.FARMER -> Screen.FarmerHome
-                            SessionManager.Role.VET -> Screen.VetHome
+                        if (role == SessionManager.Role.FARMER) {
+                            scope.launch {
+                                val result = ServiceLocator.farmerRepository.getProfile()
+                                val destination = when {
+                                    (result as? FarmerRepository.Result.Success)?.profile != null -> Screen.FarmerHome
+                                    (result as? FarmerRepository.Result.Success)?.profile == null -> Screen.Onboarding
+                                    else -> Screen.FarmerHome
+                                }
+                                withContext(Dispatchers.Main) {
+                                    navController.navigate(destination.route) {
+                                        popUpTo(Screen.PhoneEntry.route) { inclusive = true }
+                                    }
+                                }
+                            }
+                        } else {
+                            val destination = when (role) {
+                                SessionManager.Role.FARMER -> Screen.FarmerHome
+                                SessionManager.Role.VET -> Screen.VetHome
+                            }
+                            navController.navigate(destination.route) {
+                                popUpTo(Screen.PhoneEntry.route) { inclusive = true }
+                            }
                         }
-                        navController.navigate(destination.route) {
+                    },
+                )
+            }
+
+            // Onboarding
+            composable(Screen.Onboarding.route) {
+                OnboardingScreen(
+                    onSubmitComplete = {
+                        navController.navigate(Screen.FarmerHome.route) {
                             popUpTo(Screen.PhoneEntry.route) { inclusive = true }
                         }
                     },
@@ -158,7 +191,15 @@ fun AppNavHost(
             }
             composable(Screen.ReportSickAnimal.route) {
                 ReportSickAnimalScreen(
-                    onSubmitted = { navController.popBackStack() },
+                    onSubmitted = { aiAdvisory, reportId ->
+                        if (aiAdvisory != null && reportId != null) {
+                            navController.navigate(Screen.AiInsight.withReportId(reportId, aiAdvisory)) {
+                                popUpTo(Screen.PhoneEntry.route) { inclusive = true }
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    },
                     bottomBar = { FarmerBottomBar(navController) },
                 )
             }
@@ -219,9 +260,32 @@ fun AppNavHost(
             }
             composable(Screen.MyReports.route) {
                 MyReportsScreen(
+                    onReportClick = { reportId ->
+                        navController.navigate(Screen.AiInsight.withReportId(reportId)) {
+                            launchSingleTop = true
+                        }
+                    },
                     bottomBar = { FarmerBottomBar(navController) },
                 )
             }
+            composable(
+                route = Screen.AiInsight.route,
+                arguments = listOf(
+                    navArgument(Screen.AiInsight.ARG_REPORT_ID) { type = NavType.StringType },
+                    navArgument(Screen.AiInsight.ARG_AI_ADVISORY) { type = NavType.StringType },
+                ),
+            ) { entry ->
+                val reportId = entry.arguments?.getString(Screen.AiInsight.ARG_REPORT_ID).orEmpty()
+                val aiAdvisory = entry.arguments?.getString(Screen.AiInsight.ARG_AI_ADVISORY)?.let {
+                    if (it.isBlank()) null else it
+                }
+                AiInsightScreen(
+                    reportId = reportId,
+                    aiAdvisory = aiAdvisory,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Screen.B2UploadTest.route) {
                 B2UploadTestScreen(onBack = { navController.popBackStack() })
             }

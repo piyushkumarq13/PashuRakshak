@@ -1,5 +1,11 @@
 package com.pashurakshak.app.ui.vet
 
+import android.content.Intent
+import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -46,10 +53,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.zxing.integration.android.IntentIntegrator
 import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.ReportPhoto
 import com.pashurakshak.app.ui.farmer.formatDateMillis
@@ -74,11 +88,30 @@ fun CaseDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showFieldCheck by rememberSaveable { mutableStateOf(false) }
+    var showVisitDialog by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    val barcodeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val intentResult = IntentIntegrator.parseActivityResult(result.resultCode, result.data)
+        if (intentResult != null && intentResult.contents != null) {
+            viewModel.onQrScanned(intentResult.contents)
+        }
+    }
 
     LaunchedEffect(state.notice) {
         state.notice?.let { notice ->
             showFieldCheck = false
             snackbarHostState.showSnackbar(notice)
+            viewModel.clearNotice()
+        }
+    }
+
+    LaunchedEffect(state.error) {
+        state.error?.let { error ->
+            snackbarHostState.showSnackbar(error)
             viewModel.clearNotice()
         }
     }
@@ -221,12 +254,97 @@ fun CaseDetailScreen(
                         )
                     }
 
-                    // Why this score — transparency feature
+                    // Why this score
                     WhyThisScoreCard(
                         totalScore = report.riskScore,
                         breakdown = report.riskBreakdown,
                         levelColor = levelColor,
                     )
+
+                    // QR Scan
+                    if (state.canMarkExamined) {
+                        Button(
+                            onClick = {
+                                val activity = context as android.app.Activity
+                                val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
+                                intent.putExtra("MODE", IntentIntegrator.QR_CODE)
+                                intent.putExtra("PROMPT_MESSAGE", "Scan animal QR to verify visit")
+                                barcodeLauncher.launch(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Scan QR to Verify Visit")
+                        }
+                    }
+
+                    // Scanned QR status
+                    if (state.isQrScanned) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(50),
+                        ) {
+                            Text(
+                                text = "QR verified: ${state.scannedQrCodeId?.take(8)}...",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+
+                    // Assessment options (unlocked after QR scan)
+                    if (state.isQrScanned) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Assessment", style = MaterialTheme.typography.titleSmall)
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                listOf("risky", "moderate", "mild").forEach { level ->
+                                    FilterChip(
+                                        selected = state.assessment == level,
+                                        onClick = { viewModel.onAssessmentSelected(level) },
+                                        label = { Text(level) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Location
+                    if (state.isQrScanned) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Location", style = MaterialTheme.typography.titleSmall)
+                            Button(
+                                onClick = {
+                                    val fine = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (fine) {
+                                        fetchLocation(fusedLocationClient, viewModel)
+                                    }
+                                },
+                            ) {
+                                Text("Get current location")
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedTextField(
+                                    value = state.latitudeText,
+                                    onValueChange = viewModel::onLatitudeChanged,
+                                    label = { Text("Latitude") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedTextField(
+                                    value = state.longitudeText,
+                                    onValueChange = viewModel::onLongitudeChanged,
+                                    label = { Text("Longitude") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
 
                     // Mark Examined
                     if (state.canMarkExamined) {
@@ -243,6 +361,23 @@ fun CaseDetailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
+                    // Submit Visit
+                    if (state.canSubmitVisit) {
+                        Button(
+                            onClick = { showVisitDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (state.isSubmittingVisit) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.padding(end = 8.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            } else {
+                                Text("Submit Visit Verification")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -254,6 +389,59 @@ fun CaseDetailScreen(
             onSubmit = { sampleRequired -> viewModel.submitFieldCheck(sampleRequired) },
             onDismiss = { showFieldCheck = false },
         )
+    }
+
+    if (showVisitDialog) {
+        AlertDialog(
+            onDismissRequest = { showVisitDialog = false },
+            title = { Text("Verify Visit") },
+            text = {
+                Text(
+                    text = "Submit visit verification for report ${state.report?.id?.take(8)}? " +
+                        "Assessment: ${state.assessment}",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showVisitDialog = false
+                        viewModel.submitVisit()
+                    },
+                    enabled = !state.isSubmittingVisit,
+                ) {
+                    if (state.isSubmittingVisit) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text("Confirm")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVisitDialog = false }, enabled = !state.isSubmittingVisit) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+private fun fetchLocation(
+    client: FusedLocationProviderClient,
+    viewModel: CaseDetailViewModel,
+) {
+    client.getCurrentLocation(
+        Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+        CancellationTokenSource().token,
+    ).addOnSuccessListener { location ->
+        if (location != null) {
+            viewModel.onLocationFetched(location.latitude, location.longitude)
+        }
+    }.addOnFailureListener { error ->
+        // Ignore — user can enter manually
     }
 }
 

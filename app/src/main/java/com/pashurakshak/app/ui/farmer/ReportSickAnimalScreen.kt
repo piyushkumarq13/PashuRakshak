@@ -60,7 +60,7 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReportSickAnimalScreen(
-    onSubmitted: () -> Unit,
+    onSubmitted: (String?, String?) -> Unit,
     bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ReportSickAnimalViewModel = viewModel {
@@ -79,7 +79,6 @@ fun ReportSickAnimalScreen(
 
     var animalPickerExpanded by remember { mutableStateOf(false) }
     var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
-    // Bumped after a denied permission so the pending path is cleared for the next tap.
     var cameraAttempt by remember { mutableIntStateOf(0) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -117,7 +116,7 @@ fun ReportSickAnimalScreen(
 
     LaunchedEffect(state.submitted) {
         if (state.submitted) {
-            onSubmitted()
+            onSubmitted(state.aiAdvisory, state.lastReportId)
             viewModel.resetAfterSubmit()
         }
     }
@@ -249,6 +248,18 @@ fun ReportSickAnimalScreen(
                         }
                     }
                 }
+            }
+
+            // Village
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Village", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = state.villageText,
+                    onValueChange = viewModel::onVillageChanged,
+                    label = { Text("Village") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
             }
 
             // Location

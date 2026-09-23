@@ -49,6 +49,7 @@ function loadEnv() {
     port,
     corsAllowedOrigins,
     adminSecret: readEnv('ADMIN_SECRET'),
+    groqApiKey: readEnv('GROQ_API_KEY'),
   };
 }
 

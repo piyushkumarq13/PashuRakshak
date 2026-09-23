@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
 import { verifyFirebaseToken } from '../../../core/middleware/verifyFirebaseToken.js';
-import { detectClusterForReport } from '../services/clusterDetection.js';
+import { detectClusterForReport, categorizeAndAssign } from '../services/clusterDetection.js';
+import { generateAdvisory } from '../services/aiAdvisory.js';
 
 const router = Router();
 
@@ -89,15 +90,16 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
   const riskBreakdown = jsonish(body.riskBreakdown ?? body.risk_breakdown, '{}');
   const photoLocalPath = str(body.photoLocalPath) ?? str(body.photo_local_path) ?? '';
   const photoRemoteUrl = str(body.photoRemoteUrl) ?? str(body.photo_remote_url);
-  const riskScore = num(body.riskScore ?? body.risk_score, 0);
-  const createdAt = num(body.createdAt ?? body.created_at, Date.now());
-  const synced = body.synced === false || body.synced === 0 ? 0 : 1;
+   const riskScore = num(body.riskScore ?? body.risk_score, 0);
+   const createdAt = num(body.createdAt ?? body.created_at, Date.now());
+   const synced = body.synced === false || body.synced === 0 ? 0 : 1;
+   const village = str(body.village);
 
   try {
     // Farm animal may not exist on the server yet (app pushes animals separately).
     // Create a placeholder so FK does not reject the report.
     const animalRow = await db.execute({
-      sql: 'SELECT id FROM pashu_animals WHERE id = ?',
+      sql: 'SELECT id, species FROM pashu_animals WHERE id = ?',
       args: [animalId],
     });
     if (animalRow.rows.length === 0) {
@@ -109,61 +111,100 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    await db.execute({
-      sql: `INSERT INTO pashu_symptom_reports (
-          id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
-          latitude, longitude, risk_score, risk_breakdown, status, synced, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          animal_id = excluded.animal_id,
-          farmer_id = excluded.farmer_id,
-          symptoms = excluded.symptoms,
-          photo_local_path = CASE
-            WHEN excluded.photo_local_path != '' THEN excluded.photo_local_path
-            ELSE pashu_symptom_reports.photo_local_path END,
-          photo_remote_url = COALESCE(excluded.photo_remote_url, pashu_symptom_reports.photo_remote_url),
-          latitude = excluded.latitude,
-          longitude = excluded.longitude,
-          risk_score = excluded.risk_score,
-          risk_breakdown = excluded.risk_breakdown,
-          status = excluded.status,
-          synced = excluded.synced,
-          created_at = excluded.created_at`,
-      args: [
-        id,
-        animalId,
-        farmerId,
-        symptoms,
-        photoLocalPath,
-        photoRemoteUrl,
-        latitude,
-        longitude,
-        riskScore,
-        riskBreakdown,
-        status,
-        synced,
-        createdAt,
-      ],
-    });
+     await db.execute({
+       sql: `INSERT INTO pashu_symptom_reports (
+           id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
+           latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           animal_id = excluded.animal_id,
+           farmer_id = excluded.farmer_id,
+           symptoms = excluded.symptoms,
+           photo_local_path = CASE
+             WHEN excluded.photo_local_path != '' THEN excluded.photo_local_path
+             ELSE pashu_symptom_reports.photo_local_path END,
+           photo_remote_url = COALESCE(excluded.photo_remote_url, pashu_symptom_reports.photo_remote_url),
+           latitude = excluded.latitude,
+           longitude = excluded.longitude,
+           risk_score = excluded.risk_score,
+           risk_breakdown = excluded.risk_breakdown,
+           status = excluded.status,
+           synced = excluded.synced,
+           created_at = excluded.created_at,
+           village = COALESCE(excluded.village, pashu_symptom_reports.village)`,
+       args: [
+         id,
+         animalId,
+         farmerId,
+         symptoms,
+         photoLocalPath,
+         photoRemoteUrl,
+         latitude,
+         longitude,
+         riskScore,
+         riskBreakdown,
+         status,
+         synced,
+         createdAt,
+         village,
+       ],
+     });
 
-    // Cluster detection runs after a successful save; it must never fail the
-    // report push itself (the offline-first app treats 200 as "synced").
-    try {
-      await detectClusterForReport(
-        {
-          id,
-          latitude,
-          longitude,
-          status,
-          createdAt,
-        },
-        req.appId,
-      );
-    } catch (error) {
-      console.error('[pashu-health/reports] cluster detection failed:', error);
-    }
+      // Cluster detection + AI categorization/vet assignment run after a
+      // successful save; they must never fail the report push itself.
+      let aiAdvisory = null;
+      try {
+        const clusterResult = await detectClusterForReport(
+          {
+            id,
+            latitude,
+            longitude,
+            status,
+            createdAt,
+          },
+          req.appId,
+        );
 
-    return res.status(200).json({ success: true });
+        await categorizeAndAssign(
+          {
+            id,
+            riskScore,
+            village,
+            clustered: clusterResult.clustered,
+          },
+          req.appId,
+        );
+
+        // Look up the farmer's preferred language and generate advisory.
+        const userRow = await db.execute({
+          sql: 'SELECT preferred_language FROM users WHERE id = ?',
+          args: [farmerId],
+        });
+        if (userRow.rows.length > 0) {
+          const preferredLanguage = userRow.rows[0].preferred_language;
+          const reportRow = await db.execute({
+            sql: 'SELECT ai_risk_category, symptoms, village, risk_score, risk_breakdown FROM pashu_symptom_reports WHERE id = ?',
+            args: [id],
+          });
+          aiAdvisory = await generateAdvisory(
+            {
+              id,
+              species: animalRow.rows[0]?.species,
+              symptoms: reportRow.rows[0]?.symptoms,
+              riskScore: reportRow.rows[0]?.risk_score,
+              riskBreakdown: reportRow.rows[0]?.risk_breakdown,
+              village: reportRow.rows[0]?.village,
+              ai_risk_category: reportRow.rows[0]?.ai_risk_category,
+              farmerId,
+            },
+            preferredLanguage,
+          );
+        }
+      } catch (error) {
+        console.error('[pashu-health/reports] cluster detection failed:', error);
+      }
+
+     return res.status(200).json({ success: true, aiAdvisory });
   } catch (error) {
     console.error('[pashu-health/reports] upsert failed:', error);
     return res.status(500).json({

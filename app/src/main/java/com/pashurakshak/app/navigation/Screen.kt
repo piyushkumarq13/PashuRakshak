@@ -5,6 +5,7 @@ import android.net.Uri
 sealed class Screen(val route: String) {
     data object PhoneEntry : Screen("phone_entry")
     data object RoleSelect : Screen("role_select")
+    data object Onboarding : Screen("onboarding")
     data object FarmerHome : Screen("farmer_home")
     data object VetHome : Screen("vet_home")
 
@@ -37,4 +38,11 @@ sealed class Screen(val route: String) {
     }
 
     data object B2UploadTest : Screen("b2_upload_test")
+    data object AiInsight : Screen("ai_insight/{reportId}/{aiAdvisory}") {
+        const val ARG_REPORT_ID = "reportId"
+        const val ARG_AI_ADVISORY = "aiAdvisory"
+
+        fun withReportId(reportId: String, aiAdvisory: String? = null): String =
+            "ai_insight/$reportId/${Uri.encode(aiAdvisory ?: "")}"
+    }
 }

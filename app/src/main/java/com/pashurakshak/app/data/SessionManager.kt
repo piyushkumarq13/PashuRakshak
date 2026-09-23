@@ -22,31 +22,48 @@ object SessionManager {
     private const val KEY_UID = "uid"
     private const val KEY_PHONE = "phone"
     private const val KEY_ROLE = "role"
+    private const val KEY_NAME = "name"
+    private const val KEY_EMAIL = "email"
+    private const val KEY_PREFERRED_LANGUAGE = "preferredLanguage"
+    private const val KEY_ANIMAL_COUNT = "animalCount"
+    private const val KEY_VILLAGE = "village"
+    private const val KEY_PINCODE = "pincode"
 
     private var prefs: SharedPreferences? = null
 
-    /** Firebase UID of the signed-in user (null until OTP verification succeeds). */
     var uid: String? = null
         private set
 
-    /** E.164 phone number the user verified. */
     var phone: String? = null
         private set
 
     var role: Role? = null
         private set
 
+    var name: String? = null
+        private set
+
+    var email: String? = null
+        private set
+
+    var preferredLanguage: String? = null
+        private set
+
+    var animalCount: Int = 0
+        private set
+
+    var village: String? = null
+        private set
+
+    var pincode: String? = null
+        private set
+
     val isLoggedIn: Boolean
         get() = role != null && uid != null
 
-    /** Farmer-side entity id = Firebase UID (safe fallback when not signed in as farmer). */
     val farmerId: String
         get() = uid ?: "anonymous-farmer"
 
-    /**
-     * Vet-side recipient id. Farmer reports address vet alerts to a shared id; the vet
-     * alerts screen queries by role, so this only matters as a stable string.
-     */
     val vetId: String
         get() = "all-vets"
 
@@ -58,9 +75,14 @@ object SessionManager {
         role = stored.getString(KEY_ROLE, null)?.let { name ->
             runCatching { Role.valueOf(name) }.getOrNull()
         }
+        name = stored.getString(KEY_NAME, null)
+        email = stored.getString(KEY_EMAIL, null)
+        preferredLanguage = stored.getString(KEY_PREFERRED_LANGUAGE, null)
+        animalCount = stored.getInt(KEY_ANIMAL_COUNT, 0)
+        village = stored.getString(KEY_VILLAGE, null)
+        pincode = stored.getString(KEY_PINCODE, null)
     }
 
-    /** Called once Firebase Phone Auth OTP verification succeeds (before role selection). */
     fun onOtpVerified(uid: String, phone: String) {
         this.uid = uid
         this.phone = phone
@@ -70,7 +92,6 @@ object SessionManager {
             ?.apply()
     }
 
-    /** Called when the user picks Farmer/Vet — completes login and persists the role. */
     fun completeLogin(role: Role) {
         this.role = role
         prefs?.edit()
@@ -78,14 +99,50 @@ object SessionManager {
             ?.apply()
     }
 
+    fun setFarmerProfile(
+        name: String,
+        email: String,
+        preferredLanguage: String,
+        animalCount: Int,
+        village: String,
+        pincode: String,
+    ) {
+        this.name = name
+        this.email = email
+        this.preferredLanguage = preferredLanguage
+        this.animalCount = animalCount
+        this.village = village
+        this.pincode = pincode
+        prefs?.edit()
+            ?.putString(KEY_NAME, name)
+            ?.putString(KEY_EMAIL, email)
+            ?.putString(KEY_PREFERRED_LANGUAGE, preferredLanguage)
+            ?.putInt(KEY_ANIMAL_COUNT, animalCount)
+            ?.putString(KEY_VILLAGE, village)
+            ?.putString(KEY_PINCODE, pincode)
+            ?.apply()
+    }
+
     fun logout() {
         role = null
         uid = null
         phone = null
+        name = null
+        email = null
+        preferredLanguage = null
+        animalCount = 0
+        village = null
+        pincode = null
         prefs?.edit()
             ?.remove(KEY_ROLE)
             ?.remove(KEY_UID)
             ?.remove(KEY_PHONE)
+            ?.remove(KEY_NAME)
+            ?.remove(KEY_EMAIL)
+            ?.remove(KEY_PREFERRED_LANGUAGE)
+            ?.remove(KEY_ANIMAL_COUNT)
+            ?.remove(KEY_VILLAGE)
+            ?.remove(KEY_PINCODE)
             ?.apply()
     }
 }

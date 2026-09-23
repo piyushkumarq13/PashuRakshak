@@ -30,4 +30,6 @@ data class SymptomReport(
     val status: ReportStatus = ReportStatus.REPORTED,
     val synced: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
+    val village: String = "",
+    val aiAdvisory: String? = null,
 )

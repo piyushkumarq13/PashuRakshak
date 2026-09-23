@@ -1,5 +1,6 @@
 package com.pashurakshak.app.ui.farmer
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import com.pashurakshak.app.ui.vet.riskLevelFor
 
 @Composable
 fun MyReportsScreen(
+    onReportClick: (String) -> Unit,
     bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: MyReportsViewModel = viewModel {
@@ -109,7 +111,7 @@ fun MyReportsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.report.id }) { item ->
-                            ReportCard(item = item)
+                            ReportCard(item = item, onReportClick = onReportClick)
                         }
                     }
                 }
@@ -119,7 +121,7 @@ fun MyReportsScreen(
 }
 
 @Composable
-private fun ReportCard(item: MyReportItem) {
+private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
     val risk = riskLevelFor(item.report.riskScore)
     val levelColor = when (risk) {
         RiskLevel.HIGH -> RiskColors.highRed
@@ -129,7 +131,8 @@ private fun ReportCard(item: MyReportItem) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { onReportClick(item.report.id) },
         colors = CardDefaults.cardColors(
             containerColor = levelColor.copy(alpha = 0.06f),
         ),

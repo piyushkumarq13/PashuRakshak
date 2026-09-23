@@ -6,7 +6,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.pashurakshak.app.BuildConfig
 import com.pashurakshak.app.data.local.SymptomReport
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -25,7 +24,7 @@ class ReportPushApi(
 ) {
 
     sealed class PushResult {
-        data object Success : PushResult()
+        data class Success(val aiAdvisory: String?) : PushResult()
         data class Failure(val message: String) : PushResult()
     }
 
@@ -33,17 +32,17 @@ class ReportPushApi(
         withContext(Dispatchers.IO) {
             try {
                 val payload = buildPayload(report)
-                // Simulated network latency so the UI can show the syncing state.
-                delay(50)
-                executePush(payload)
-                PushResult.Success
+                val response = executePush(payload)
+                val aiAdvisory = response.optString("aiAdvisory").takeIf { it.isNotBlank() }
+                PushResult.Success(aiAdvisory)
             } catch (error: Exception) {
                 Log.e(TAG, "Report push failed: ${error.message}", error)
                 PushResult.Failure(error.message ?: "Push failed")
             }
         }
 
-    private fun executePush(payload: JSONObject) {
+    /** Blocking — must only be called from Dispatchers.IO. Returns the response JSON. */
+    private fun executePush(payload: JSONObject): JSONObject {
         val idToken = currentIdToken()
         val connection = open("$baseUrl/api/v1/pashu-health/reports", "POST")
         connection.setRequestProperty("Content-Type", "application/json")
@@ -51,7 +50,7 @@ class ReportPushApi(
         connection.setRequestProperty("Authorization", "Bearer $idToken")
         connection.doOutput = true
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        readJson(connection)
+        return readJson(connection)
     }
 
     /** Blocking wait — must only be called from Dispatchers.IO. */
@@ -72,6 +71,7 @@ class ReportPushApi(
             put("photo_remote_url", report.photoRemoteUrl ?: JSONObject.NULL)
             put("latitude", report.latitude)
             put("longitude", report.longitude)
+            put("village", report.village)
             put("risk_score", report.riskScore)
             put("risk_breakdown", JSONObject(report.riskBreakdown).toString())
             put("status", report.status.dbValue)

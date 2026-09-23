@@ -65,5 +65,22 @@ object Migrations {
             read INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS pashu_farmer_profiles (
+            farmer_id TEXT PRIMARY KEY NOT NULL REFERENCES farmers(id),
+            animal_count INTEGER NOT NULL DEFAULT 0,
+            village TEXT NOT NULL,
+            pincode TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS pashu_visit_verifications (
+            id TEXT PRIMARY KEY NOT NULL,
+            report_id TEXT NOT NULL REFERENCES symptom_reports(id),
+            scanned_qr_code_id TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            assessment TEXT NOT NULL,
+            matched INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        );
     """
 }

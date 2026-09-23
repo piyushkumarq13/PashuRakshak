@@ -2,7 +2,7 @@
 
 Multi-app shared backend foundation: Express (ES modules) + Turso/libSQL.
 
-- **Phase 1:** core app-key system (`/api/v1/core/*`) — app registration, admin auth.
+- **Phase 1:** core app-key system (`/api/v1/core/*`) — app registration, admin auth, users system (phone/firebase auth, farmer/vet profiles).
 - **Phase 2:** `pashu-health` module (`/api/v1/pashu-health/*`) — reports, animals,
   vaccinations, alerts for the PashuRakshak Android app. All module routes require
   a valid `X-App-Key`.
@@ -111,6 +111,39 @@ curl -X POST http://localhost:3000/api/v1/core/devices \
 Upserts `device_tokens` keyed by `(app_id, uid, role)` →
 `200 { "success": true, "device": { "id", "appId", "uid", "role", "updatedAt" } }`.
 
+### Users system
+
+`POST /api/v1/core/users` — protected by **both** `verifyAppKey` and
+`verifyFirebaseToken`. Creates or updates a user keyed by `phone`.
+
+```bash
+curl -X POST http://localhost:3000/api/v1/core/users \
+  -H "Content-Type: application/json" \
+  -H "X-App-Key: $APP_KEY" \
+  -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \
+  -d '{"phone":"+919000000000","role":"farmer","name":"Ravi","email":"ravi@example.com","preferredLanguage":"hi"}'
+```
+
+Returns `{ "user": { "id", "phone", "firebase_uid", "role", "name", "email", "preferred_language", "created_at", "updated_at" } }`.
+
+`GET /api/v1/core/users/me` — protected by both middlewares. Looks up the
+calling user by `firebase_uid`. Returns `{ "user": {...} }` or `404 { "exists": false }`
+(when the user has not completed onboarding).
+
+`PUT /api/v1/core/users/me` — protected by both middlewares. Partial update
+of `{ name, email, preferredLanguage }` keyed by `firebase_uid`. Returns the
+updated user row or `404 { "exists": false }`.
+
+### Pincode lookup (public)
+
+`GET /api/v1/core/pincode/:code` — calls the [PostalPincode API](https://api.postalpincode.in/pincode/{code}) server-side and returns a simplified list of area / post-office names.
+
+```bash
+curl http://localhost:3000/api/v1/core/pincode/110001
+```
+
+Returns `{ "pincode": "110001", "offices": [{ "name", "branchType", "deliveryStatus", "district", "state", "areaName", "pincode" }] }`. Returns `404 { "error": "pincode_not_found" }` when the pincode has no results.
+
 ### Push helper (core)
 
 `src/core/services/push.js` exports `sendPushToUid(uid, title, body)` — looks up
@@ -126,7 +159,7 @@ same `app_id` receives the alert (best-effort; failures never fail the report).
   submissions are tied to an authenticated farmer (`req.uid`).
 - All `GET /pashu-health/*` routes remain app-key only.
 
-## Pashu-Health API (Phase 2)
+## Pashu-Health API (Phase 5)
 
 All routes below live under `/api/v1/pashu-health` and are protected by
 `verifyAppKey` (the whole router in `src/routes.js`) — every request needs:
@@ -141,11 +174,30 @@ Database tables (migration `001_pashu_health.js`, all prefixed `pashu_`):
 `pashu_animals`, `pashu_vaccinations`, `pashu_symptom_reports`, `pashu_vets`,
 `pashu_alerts`, `pashu_farmers` — columns mirror the Android app's `Migrations.kt`.
 
+Core `users` table (migration `002_users.js`): `id`, `phone`, `firebase_uid`,
+`role`, `name`, `email`, `preferred_language`, `created_at`, `updated_at`.
+
+Profile tables (migration `003_pashu_profiles.js`, `pashu_` prefixed):
+- `pashu_farmer_profiles` (`user_id PK/FK → users`, `animal_count`, `village`, `pincode`, `created_at`)
+- `pashu_vet_profiles` (`user_id PK/FK → users`, `pincode`, `service_areas` (JSON array), `created_at`, `updated_at`)
+
+AI fields (migration `004_report_ai_fields.js`): `pashu_symptom_reports` gains
+`assigned_vet_id`, `ai_risk_category`, `vet_assessment`, and `village`.
+
+AI tables (migration `005_ai_tables.js`): `pashu_ai_responses` (report_id, farmer_id,
+response_text, model, created_at) and `pashu_ai_conversations` (report_id, farmer_id,
+full_history, created_at, updated_at).
+
+Visit verification + gov alerts (migration `006_visits_and_gov_alerts.js`):
+`pashu_visit_verifications` (id, report_id, vet_id, scanned_qr_code_id, matched,
+latitude, longitude, verified_at) and `pashu_gov_alerts` (id, report_id, severity,
+message, acknowledged, created_at).
+
 ### Reports
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/pashu-health/reports` | Upsert a symptom report by `id` (idempotent — safe for app retries) → `200 { "success": true }`. After a successful save, runs **cluster detection** (see below). |
+| `POST /api/v1/pashu-health/reports` | Upsert a symptom report by `id` (idempotent — safe for app retries) → `200 { "success": true }`. After a successful save, runs **cluster detection**, **AI risk categorization**, and **vet auto-assignment** |
 | `GET /api/v1/pashu-health/reports` | List all reports (newest first) → `{ "reports": [...] }` |
 | `GET /api/v1/pashu-health/reports/:id` | Single report → `{ "report": {...} }` or `404` |
 
@@ -165,12 +217,17 @@ aliases from `ReportPushApi.buildPayload` are also accepted; `symptoms` and
   "riskScore": 45,
   "riskBreakdown": "{\"Fever\":20,\"multiple_symptoms\":10}",
   "status": "reported",
-  "createdAt": 1790084141971
+  "createdAt": 1790084141971,
+  "village": "optional-village-name"
 }
 ```
 
 `status` must be one of: `reported`, `vet_assigned`, `examined`, `sample_sent`,
 `confirmed`, `resolved`.
+
+`village` is optional. When present, the system auto-categorizes the report's
+risk (`high` ≥ 60, `mid` ≥ 30, `low` < 30) and attempts to assign a vet whose
+`service_areas` contains the village name. See **AI categorization + vet assignment** below.
 
 Example:
 
@@ -180,6 +237,24 @@ curl -X POST http://localhost:3000/api/v1/pashu-health/reports \
   -H "X-App-Key: $APP_KEY" \
   -d '{"id":"r1","animalId":"a1","farmerId":"f1","symptoms":"[\"Fever\"]","photoRemoteUrl":null,"latitude":12.3,"longitude":77.1,"riskScore":20,"riskBreakdown":"{\"Fever\":20}","status":"reported","createdAt":1790084141971}'
 ```
+
+### AI categorization + vet assignment
+
+After a successful report save, `categorizeAndAssign(report, appId)` runs
+automatically:
+
+1. **Risk category** — sets `ai_risk_category` on the report:
+   - `high` if `riskScore >= 60` OR report was flagged as part of a cluster
+   - `mid` if `riskScore >= 30`
+   - `low` otherwise
+2. **Vet auto-assignment** — if `village` is present, queries `pashu_vet_profiles`
+   for a vet whose `service_areas` JSON text contains the village name. If found:
+   - sets `assigned_vet_id` on the report
+   - creates a targeted `pashu_alerts` row addressed to that specific vet's user id
+   If no village or no matching vet: `assigned_vet_id` stays null, a warning is logged, no error thrown.
+
+This runs inside the same `try/catch` as cluster detection — failures are always
+logged and never fail the report push.
 
 ### Animals — basic CRUD
 
@@ -241,6 +316,62 @@ at the same 5 km radius; groups with ≥ 3 reports are returned with
 `reportCount`, `reportIds`, centroid (`centerLat`/`centerLng`), `radiusKm`,
 `firstReportAt`/`lastReportAt`, and `statuses`.
 
+### Farmer profiles
+
+| Method & path | Purpose |
+|---|---|
+| `POST /api/v1/pashu-health/farmer-profiles` | Create/upsert profile (requires `animalCount`, `village`, `pincode`); resolved by `firebase_uid` → `users` id |
+| `GET /api/v1/pashu-health/farmer-profiles/me` | Get the caller's own profile or `404 { exists: false }` |
+
+Protected by `verifyAppKey` + `verifyFirebaseToken`. Looks up the user via `users.firebase_uid = req.uid` and upserts into `pashu_farmer_profiles`.
+
+### Vet profiles
+
+| Method & path | Purpose |
+|---|---|
+| `POST /api/v1/pashu-health/vet-profiles` | Create/upsert profile (requires `pincode`, `serviceAreas: string[]`); resolved by `firebase_uid` → `users` id |
+| `GET /api/v1/pashu-health/vet-profiles/me` | Get the caller's own profile or `404 { exists: false }` |
+| `GET /api/v1/pashu-health/vets/available?area=` | List vets whose `service_areas` JSON contains the given area string |
+
+Protected by `verifyAppKey` + `verifyFirebaseToken` for all mutating and `me` routes. `GET /available` is app-key only (via the router-level middleware). Uses a `JOIN users + pashu_vet_profiles` with `role = 'vet'` and a `LIKE` check on `service_areas` text.
+
+### AI advisory & chat (Phase 4)
+
+Powered by Groq (`llama-3.3-70b-versatile`). Requires `GROQ_API_KEY` in `.env` (optional — failures degrade gracefully).
+
+After a successful report save, `generateAdvisory` is called automatically:
+- Builds a prompt with species, symptoms, and risk category
+- System prompt restricts guidance to preventive/first-aid only (isolation, hydration, limiting herd contact, hygiene)
+- NEVER prescribes medications or dosages
+- Closes with "A vet will follow up shortly. This is not a diagnosis"
+- Responds in Hindi if `preferred_language = 'hi'`, otherwise English
+- Result saved to `pashu_ai_responses` and returned as `aiAdvisory` in the POST `/reports` response
+
+| Method & path | Purpose |
+|---|---|
+| `POST /api/v1/pashu-health/reports/:id/chat` | Send a follow-up message; `categorizeAndAssign` + `continueConversation` preserves full history but sends only the last 10 messages to Groq to cap token usage |
+| `GET /api/v1/pashu-health/reports/:id/chat` | Returns the FULL stored conversation history for display |
+
+Both chat endpoints require `verifyAppKey` + `verifyFirebaseToken`. A Groq failure (rate limit, network, missing key) never blocks the report save — `aiAdvisory` is `null` on failure.
+
+### Visit verification
+
+`POST /api/v1/pashu-health/visits` — protected by `verifyAppKey` + `verifyFirebaseToken`.
+
+Accepts `{ reportId, scannedQrCodeId, latitude, longitude, assessment }` where `assessment` is one of `risky`, `moderate`, `mild`.
+
+- Compares `scannedQrCodeId` to the report's animal QR code to set `matched`
+- Rejects `403` if the authenticated vet is not the assigned vet (unless no vet is assigned — fallback path)
+- Inserts into `pashu_visit_verifications`
+- Updates `pashu_symptom_reports` with `vet_assessment` and sets `status = 'examined'`
+- If `assessment === 'risky'`, inserts a `pashu_gov_alerts` row (severity='high') for government dashboard readiness
+
+### Government alerts
+
+`GET /api/v1/pashu-health/gov-alerts` — app-key only (via router-level middleware).
+
+Returns all `pashu_gov_alerts` rows ordered by `created_at DESC`. For future dashboard use.
+
 ## Environment variables
 
 See `.env.example`:
@@ -253,6 +384,7 @@ See `.env.example`:
 | `CORS_ALLOWED_ORIGINS` | yes | Comma-separated allowed origins |
 | `ADMIN_SECRET` | yes | Value of the `X-Admin-Secret` header for admin routes |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | for auth/push | One-line service-account JSON (see Firebase Auth section). Missing → `503` on Firebase-protected routes, server still starts. |
+| `GROQ_API_KEY` | no | Groq API key for AI advisory and chat. Without it, AI routes degrade gracefully and return `null`. |
 
 The server refuses to start and prints every missing variable if any are absent.
 
@@ -262,8 +394,8 @@ Migrations live in `src/db/migrations/*.js`, each exporting:
 
 ```js
 export default {
-  version: 2,          // unique, monotonic
-  name: '001_pashu_health',
+  version: 7,          // unique, monotonic
+  name: '006_visits_and_gov_alerts',
   async up(db) { /* SQL via db.execute / db.batch */ },
 };
 ```
@@ -283,14 +415,14 @@ src/
 ├── config/env.js            # env loading + validation
 ├── db/client.js             # configured Turso client
 ├── db/migrate.js            # migration runner (migrations_applied table)
-├── db/migrations/           # numbered migration files (000_core.js, 001_pashu_health.js, …)
+├── db/migrations/           # numbered migration files (000_core.js, 001_pashu_health.js, 002_users.js, 003_pashu_profiles.js, 004_report_ai_fields.js, 005_ai_tables.js, 006_visits_and_gov_alerts.js, …)
 ├── core/
 │   ├── middleware/          # verifyAppKey.js, adminSecret.js, verifyFirebaseToken.js
-│   ├── routes/              # apps.js, devices.js
+│   ├── routes/              # apps.js, devices.js, users.js, pincode.js
 │   └── services/            # push.js (sendPushToUid)
 ├── modules/
-│   ├── pashu-health/routes/      # reports.js, animals.js, vaccinations.js, alerts.js, clusters.js, index.js
-│   └── pashu-health/services/    # clusterDetection.js (7-day / 5 km / 3+ rule)
+│   ├── pashu-health/routes/      # reports.js, animals.js, vaccinations.js, alerts.js, clusters.js, farmerProfiles.js, vetProfiles.js, vetsAvailable.js, aiChat.js, visits.js, govAlerts.js, index.js
+│   └── pashu-health/services/    # clusterDetection.js (7-day / 5 km / 3+ rule, categorizeAndAssign), aiAdvisory.js (Groq)
 ├── routes.js                # mounts core + pashu-health (+ future modules) under /api/v1
 └── app.js                   # Express setup, CORS, /health, starts server
 ```

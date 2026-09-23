@@ -118,6 +118,76 @@ export async function detectClusterForReport(report, appId = null) {
   };
 }
 
+/**
+ * Categorize a report's risk and optionally auto-assign a vet by village.
+ *
+ * - ai_risk_category: 'high' if riskScore >= 60 OR flagged as part of a cluster;
+ *   'mid' if riskScore >= 30; else 'low'.
+ * - If report.village is present: query pashu_vet_profiles for a vet whose
+ *   service_areas JSON text contains report.village. If found:
+ *   UPDATE assigned_vet_id and create a pashu_alerts row targeted at
+ *   that vet's user id.
+ * - If no village or no matching vet: leave assigned_vet_id null,
+ *   log a warning, do not throw.
+ */
+export async function categorizeAndAssign(report, appId) {
+  const riskScore = Number(report.riskScore) || 0;
+  const isCluster = !!report.clustered;
+  const village = report.village ?? null;
+
+  let category;
+  if (riskScore >= 60 || isCluster) {
+    category = 'high';
+  } else if (riskScore >= 30) {
+    category = 'mid';
+  } else {
+    category = 'low';
+  }
+
+  try {
+    await db.execute({
+      sql: 'UPDATE pashu_symptom_reports SET ai_risk_category = ? WHERE id = ?',
+      args: [category, report.id],
+    });
+
+    if (!village) {
+      console.warn(`[categorizeAndAssign] No village for report ${report.id}; assigned_vet_id left null`);
+      return;
+    }
+
+    const vetResult = await db.execute({
+      sql: `SELECT u.id FROM users u
+        JOIN pashu_vet_profiles v ON u.id = v.user_id
+        WHERE u.role = 'vet' AND v.service_areas LIKE ?
+        LIMIT 1`,
+      args: [`%${village}%`],
+    });
+
+    if (vetResult.rows.length === 0) {
+      console.warn(`[categorizeAndAssign] No vet found for village ${village} on report ${report.id}`);
+      return;
+    }
+
+    const vetUserId = vetResult.rows[0].id;
+    const now = Date.now();
+
+    await db.execute({
+      sql: 'UPDATE pashu_symptom_reports SET assigned_vet_id = ? WHERE id = ?',
+      args: [vetUserId, report.id],
+    });
+
+    const alertId = randomUUID();
+    const message = `AI risk ${category} — report ${report.id} in ${village} assigned to vet`;
+    await db.execute({
+      sql: `INSERT INTO pashu_alerts (id, recipient_role, recipient_id, message, read, created_at)
+        VALUES (?, 'vet', ?, ?, 0, ?)`,
+      args: [alertId, vetUserId, message, now],
+    });
+  } catch (error) {
+    console.error(`[categorizeAndAssign] failed for report ${report.id}:`, error);
+  }
+}
+
 /** Pushes the cluster message to every device_tokens row with role='vet' for this app. */
 async function notifyVets(appId, message) {
   if (!appId) return;
