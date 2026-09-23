@@ -26,7 +26,7 @@ export default function App() {
       const payloadPart = token.split('.')[0]
       if (payloadPart) {
         const json = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')))
-        if (json.role === 'gov' && json.exp && json.exp * 1000 > Date.now()) {
+        if (json.role === 'gov' && json.exp && json.exp > Date.now()) {
           setMagistrate({ email: json.email, district: json.district, name: null })
           setChecking(false)
           return
