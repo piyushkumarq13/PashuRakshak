@@ -5,7 +5,7 @@ import { env } from '../../../config/env.js';
 
 const groq = new Groq({ apiKey: env.groqApiKey });
 
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'openai/gpt-oss-120b';
 
 const SYSTEM_PROMPT = `You are a livestock health advisory assistant for a farming app called PashuRakshak.
 
