@@ -65,6 +65,13 @@ export async function generateAdvisory(report, farmerPreferredLanguage) {
       args: [id, report.id, report.farmerId, responseText, MODEL, now],
     });
 
+    const convId = randomUUID();
+    await db.execute({
+      sql: `INSERT INTO pashu_ai_conversations (id, report_id, farmer_id, full_history, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [convId, report.id, report.farmerId, JSON.stringify([{ role: 'assistant', content: responseText }]), now, now],
+    });
+
     return responseText;
   } catch (error) {
     console.error('[aiAdvisory] generateAdvisory failed:', error?.message ?? error);

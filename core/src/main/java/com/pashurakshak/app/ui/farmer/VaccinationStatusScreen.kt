@@ -98,7 +98,7 @@ fun VaccinationStatusScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
-    var showEditDialog by rememberSaveable { mutableStateOf<AnimalVaccinationStatus?>(null) }
+    var showEditDialog by rememberSaveable { mutableStateOf<VaccinationListItem?>(null) }
     var deleteConfirmPair by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -161,14 +161,13 @@ fun VaccinationStatusScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(state.items, key = { it.animal.id }) { item ->
+                        items(state.items, key = { it.vaccination.id }) { item ->
                             VaccinationCard(
-                                item = item,
+                                animal = item.animal,
+                                vaccination = item.vaccination,
                                 onEdit = { showEditDialog = item },
                                 onDelete = {
-                                    if (item.vaccinations.isNotEmpty()) {
-                                        deleteConfirmPair = item.animal.id to item.vaccinations.first().id
-                                    }
+                                    deleteConfirmPair = item.animal.id to item.vaccination.id
                                 },
                             )
                         }
@@ -179,10 +178,10 @@ fun VaccinationStatusScreen(
     }
 
     if (showEditDialog != null) {
-        val initial = showEditDialog!!.vaccinations.firstOrNull()
+        val initial = showEditDialog?.vaccination
         if (initial != null) {
             AddVaccinationDialog(
-                animals = state.items.map { it.animal },
+                animals = state.items.map { it.animal }.distinct(),
                 initialVaccination = initial,
                 isSaving = state.isSaving,
                 onDismiss = { showEditDialog = null },
@@ -447,11 +446,12 @@ private fun defaultNextDue(dateGiven: Long): Long =
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VaccinationCard(
-    item: AnimalVaccinationStatus,
+    animal: Animal,
+    vaccination: Vaccination,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val overdue = item.isOverdue
+    val overdue = vaccination.nextDue != null && vaccination.nextDue < System.currentTimeMillis()
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
@@ -475,12 +475,12 @@ private fun VaccinationCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.animal.name,
+                        text = animal.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = item.animal.species,
+                        text = animal.species,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -518,13 +518,11 @@ private fun VaccinationCard(
                         container = AppColors.SoftRed,
                         content = AppColors.Danger,
                     )
-
-                    item.nextDue != null -> StatusPill(
+                    vaccination.nextDue != null -> StatusPill(
                         text = "Scheduled",
                         container = AppColors.SoftGreen,
                         content = AppColors.Healthy,
                     )
-
                     else -> StatusPill(
                         text = "No doses",
                         container = MaterialTheme.colorScheme.surfaceVariant,
@@ -532,44 +530,28 @@ private fun VaccinationCard(
                     )
                 }
             }
-
-            if (item.vaccinations.isEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AccentDot(color = AppColors.Primary)
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "No vaccinations yet — tap + to log a dose.",
+                    text = "${vaccination.vaccineName} — ${formatDateMillis(vaccination.dateGiven)}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
                 )
-            } else {
-                Text(
-                    text = "History",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+            vaccination.nextDue?.let { nextDue ->
+                StatusPill(
+                    text = if (overdue) {
+                        "Overdue · ${formatDateMillis(nextDue)}"
+                    } else {
+                        "Next due · ${formatDateMillis(nextDue)}"
+                    },
+                    container = if (overdue) AppColors.SoftRed else AppColors.SoftBlue,
+                    content = if (overdue) AppColors.Danger else AppColors.Info,
                 )
-                item.vaccinations.forEach { vaccination ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AccentDot(color = AppColors.Primary)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "${vaccination.vaccineName} — ${formatDateMillis(vaccination.dateGiven)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-                item.nextDue?.let { nextDue ->
-                    StatusPill(
-                        text = if (overdue) {
-                            "Overdue · ${formatDateMillis(nextDue)}"
-                        } else {
-                            "Next due · ${formatDateMillis(nextDue)}"
-                        },
-                        container = if (overdue) AppColors.SoftRed else AppColors.SoftBlue,
-                        content = if (overdue) AppColors.Danger else AppColors.Info,
-                    )
-                }
             }
         }
     }

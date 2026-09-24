@@ -14,18 +14,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class AnimalVaccinationStatus(
+data class VaccinationListItem(
     val animal: Animal,
-    val vaccinations: List<Vaccination>,
-    val nextDue: Long?,
-) {
-    val isOverdue: Boolean
-        get() = nextDue != null && nextDue < System.currentTimeMillis()
-}
+    val vaccination: Vaccination,
+)
 
 data class VaccinationStatusUiState(
     val isLoading: Boolean = true,
-    val items: List<AnimalVaccinationStatus> = emptyList(),
+    val items: List<VaccinationListItem> = emptyList(),
     val isSaving: Boolean = false,
     val notice: String? = null,
     val error: String? = null,
@@ -64,15 +60,16 @@ class VaccinationStatusViewModel(
         }
     }
 
-    private suspend fun loadItems(): List<AnimalVaccinationStatus> {
+    private suspend fun loadItems(): List<VaccinationListItem> {
         val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
-        return animals.map { animal ->
+        return animals.flatMap { animal ->
             val vaccinations = vaccinationRepository.getByAnimal(animal.id)
-            AnimalVaccinationStatus(
-                animal = animal,
-                vaccinations = vaccinations.sortedByDescending { it.dateGiven },
-                nextDue = vaccinations.minOfOrNull { it.nextDue },
-            )
+            vaccinations.map { vaccination ->
+                VaccinationListItem(
+                    animal = animal,
+                    vaccination = vaccination,
+                )
+            }
         }
     }
 
