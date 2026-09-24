@@ -108,10 +108,14 @@ export default function ReportsTab() {
                 <td>{r.village ?? '—'}</td>
                 <td>
                   <span className={`status-badge status-${r.status ?? 'none'}`}>
-                    {r.status ?? 'unknown'}
+                    {(r.status ?? 'unknown').replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td>{severityFor(r)}</td>
+                <td>
+                  <span className={`risk-badge risk-${severityFor(r)}`}>
+                    {severityFor(r)}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>

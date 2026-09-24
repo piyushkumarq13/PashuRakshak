@@ -38,7 +38,13 @@ export default function StatusPage({ application, onResubmit, onSignOut, onRefre
   return (
     <div className="card">
       <div className="profile-header">
-        <h2>Application status</h2>
+        <div>
+          <h2>Application status</h2>
+          <p className="muted" style={{ marginTop: 2 }}>
+            {application?.full_name ? `${application.full_name} · ` : ''}
+            {application?.district ? `District of ${application.district}` : 'PashuRakshak network'}
+          </p>
+        </div>
         <button className="btn-secondary" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>

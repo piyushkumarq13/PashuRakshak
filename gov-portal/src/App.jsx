@@ -66,14 +66,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <div>
-          <h1>PashuRakshak — Government Portal</h1>
-          {magistrate && (
-            <p className="header-sub">
-              {magistrate.name ? `${magistrate.name} · ` : ''}
-              District Magistrate, {magistrate.district}
-            </p>
-          )}
+        <div className="brand">
+          <div className="brand-mark" aria-hidden="true">🛡️</div>
+          <div className="brand-text">
+            <h1>
+              PashuRakshak <span>Government Portal</span>
+            </h1>
+            {magistrate && (
+              <p className="header-sub">
+                {magistrate.name ? `${magistrate.name} · ` : ''}
+                District Magistrate, {magistrate.district}
+              </p>
+            )}
+          </div>
         </div>
         {magistrate && (
           <button className="btn-secondary" onClick={handleSignOut}>
@@ -86,7 +91,39 @@ export default function App() {
         {magistrate ? (
           <Dashboard magistrate={magistrate} />
         ) : (
-          <LoginScreen onLoggedIn={handleLoggedIn} />
+          <div className="auth-shell">
+            <aside className="auth-brand">
+              <div>
+                <p className="auth-brand-kicker">District oversight</p>
+                <h2>Livestock health, one dashboard.</h2>
+                <p className="auth-brand-lead">
+                  Review vet applications, track symptom reports, monitor outbreak clusters and
+                  acknowledge government alerts — scoped to your district.
+                </p>
+              </div>
+              <ul className="auth-brand-points">
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Approve or reject veterinarian applications with review notes
+                </li>
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Live symptom reports with AI risk scoring and status filters
+                </li>
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Outbreak clusters detected on a 7-day / 5 km rule
+                </li>
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Passwordless sign-in — email OTP only
+                </li>
+              </ul>
+            </aside>
+            <div className="auth-form-side">
+              <LoginScreen onLoggedIn={handleLoggedIn} />
+            </div>
+          </div>
         )}
       </main>
     </div>

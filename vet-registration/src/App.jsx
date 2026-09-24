@@ -136,7 +136,15 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>PashuRakshak — Vet Registration</h1>
+        <div className="brand">
+          <div className="brand-mark" aria-hidden="true">🩺</div>
+          <div className="brand-text">
+            <h1>
+              PashuRakshak <span>Vet Registration</span>
+            </h1>
+            <p className="header-sub">Join the livestock health network</p>
+          </div>
+        </div>
         {headerAuthed && (
           <button className="btn-link" onClick={handleSignOut}>
             Sign out
@@ -153,6 +161,30 @@ export default function App() {
 
         {stage === 'landing' && (
           <>
+            <div className="auth-brand auth-brand-inline">
+              <div>
+                <p className="auth-brand-kicker">For veterinarians</p>
+                <h2>Apply once. Serve every farmer near you.</h2>
+                <p className="auth-brand-lead">
+                  Register with your license, pick your coverage pincodes, and a District Magistrate
+                  reviews your application — usually within days.
+                </p>
+              </div>
+              <ul className="auth-brand-points">
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Email OTP verification — no paperwork queues
+                </li>
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Live application status with reviewer notes
+                </li>
+                <li>
+                  <span className="tick" aria-hidden="true">✓</span>
+                  Once approved, sign in to the Vet App and start triaging cases
+                </li>
+              </ul>
+            </div>
             <SignInForm
               onSignedIn={handleAuthResponse}
               onGoRegister={() => setStage('register')}
