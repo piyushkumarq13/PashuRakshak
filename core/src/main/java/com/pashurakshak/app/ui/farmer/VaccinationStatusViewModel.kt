@@ -22,6 +22,7 @@ data class VaccinationListItem(
 data class VaccinationStatusUiState(
     val isLoading: Boolean = true,
     val items: List<VaccinationListItem> = emptyList(),
+    val animals: List<Animal> = emptyList(),
     val animalCount: Int = 0,
     val isSaving: Boolean = false,
     val notice: String? = null,
@@ -44,8 +45,8 @@ class VaccinationStatusViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            runCatching { loadItems() }.onSuccess { (items, animalCount) ->
-                _uiState.update { it.copy(isLoading = false, items = items, animalCount = animalCount, error = null) }
+            runCatching { loadItems() }.onSuccess { (items, animals, animalCount) ->
+                _uiState.update { it.copy(isLoading = false, items = items, animals = animals, animalCount = animalCount, error = null) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message ?: "Failed to load vaccinations")
@@ -54,14 +55,14 @@ class VaccinationStatusViewModel(
 
             launch {
                 runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-                runCatching { loadItems() }.onSuccess { (items, animalCount) ->
-                    _uiState.update { it.copy(isLoading = false, items = items, animalCount = animalCount) }
+                runCatching { loadItems() }.onSuccess { (items, animals, animalCount) ->
+                    _uiState.update { it.copy(isLoading = false, items = items, animals = animals, animalCount = animalCount) }
                 }
             }
         }
     }
 
-    private suspend fun loadItems(): Pair<List<VaccinationListItem>, Int> {
+    private suspend fun loadItems(): Triple<List<VaccinationListItem>, List<Animal>, Int> {
         val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
         val items = animals.flatMap { animal ->
             val vaccinations = vaccinationRepository.getByAnimal(animal.id)
@@ -72,7 +73,7 @@ class VaccinationStatusViewModel(
                 )
             }
         }
-        return Pair(items, animals.size)
+        return Triple(items, animals, animals.size)
     }
 
     fun addVaccination(animalId: String, vaccineName: String, dateGiven: Long, nextDue: Long) {

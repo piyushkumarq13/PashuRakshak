@@ -181,7 +181,7 @@ fun VaccinationStatusScreen(
         val initial = showEditDialog?.vaccination
         if (initial != null) {
             AddVaccinationDialog(
-                animals = state.items.map { it.animal }.distinct(),
+                animals = state.animals,
                 initialVaccination = initial,
                 isSaving = state.isSaving,
                 onDismiss = { showEditDialog = null },
@@ -197,7 +197,7 @@ fun VaccinationStatusScreen(
 
     if (showAddDialog) {
         AddVaccinationDialog(
-            animals = state.items.map { it.animal },
+            animals = state.animals,
             isSaving = state.isSaving,
             onDismiss = { if (!state.isSaving) showAddDialog = false },
             onConfirm = { animalId, vaccineName, dateGiven, nextDue ->
