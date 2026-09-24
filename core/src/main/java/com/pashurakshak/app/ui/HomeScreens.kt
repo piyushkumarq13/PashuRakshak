@@ -352,7 +352,7 @@ private fun HeroHeader(
                     tint = Color.White,
                 )
             }
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             IconButton(
                 onClick = onOpenProfile,
                 modifier = Modifier
