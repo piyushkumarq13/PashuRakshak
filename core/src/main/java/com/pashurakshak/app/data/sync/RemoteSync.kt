@@ -51,11 +51,11 @@ object RemoteSync {
             "/api/v1/pashu-health/animals",
             JSONObject()
                 .put("id", animal.id)
-                .put("ownerFarmerId", animal.ownerFarmerId)
+                .put("owner_farmer_id", animal.ownerFarmerId)
                 .put("species", animal.species)
                 .put("name", animal.name)
-                .put("qrCodeId", animal.qrCodeId)
-                .put("createdAt", animal.createdAt),
+                .put("qr_code_id", animal.qrCodeId)
+                .put("created_at", animal.createdAt),
         )
     }
 
@@ -64,10 +64,10 @@ object RemoteSync {
             "/api/v1/pashu-health/vaccinations",
             JSONObject()
                 .put("id", vaccination.id)
-                .put("animalId", vaccination.animalId)
-                .put("vaccineName", vaccination.vaccineName)
-                .put("dateGiven", vaccination.dateGiven)
-                .put("nextDue", vaccination.nextDue),
+                .put("animal_id", vaccination.animalId)
+                .put("vaccine_name", vaccination.vaccineName)
+                .put("date_given", vaccination.dateGiven)
+                .put("next_due", vaccination.nextDue),
         )
     }
 

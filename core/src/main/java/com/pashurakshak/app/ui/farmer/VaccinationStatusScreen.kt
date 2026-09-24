@@ -61,7 +61,6 @@ import com.pashurakshak.app.data.local.Vaccination
 import com.pashurakshak.app.ui.components.AccentDot
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
-import com.pashurakshak.app.ui.components.ErrorBanner
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.StatusPill
