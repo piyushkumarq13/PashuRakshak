@@ -216,6 +216,8 @@ fun AppNavHost(
             composable(Screen.VetHome.route) {
                 VetHomeScreen(
                     onOpenCaseQueue = { navController.navigate(Screen.VetCaseQueue.route) },
+                    onOpenAlerts = { navController.navigate(Screen.VetAlerts.route) },
+                    onOpenProfile = { navController.navigate(Screen.Profile.route) },
                     bottomBar = { VetBottomBar(navController) },
                 )
             }

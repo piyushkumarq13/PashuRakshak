@@ -2,26 +2,30 @@ package com.pashurakshak.app.ui.vet
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,6 +40,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.EmptyState
+import com.pashurakshak.app.ui.components.ErrorBanner
+import com.pashurakshak.app.ui.components.FadeInContent
+import com.pashurakshak.app.ui.components.LoadingState
+import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.farmer.formatDateMillis
 import com.pashurakshak.app.ui.farmer.prettifyStatus
 
@@ -68,64 +78,60 @@ fun VetCaseQueueScreen(
     Scaffold(
         modifier = modifier,
         bottomBar = bottomBar,
+        containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            Text(
-                text = "Case Queue",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            ScreenHeader(
+                title = "Case Queue",
+                subtitle = if (state.items.isNotEmpty()) {
+                    "${state.items.size} case${if (state.items.size == 1) "" else "s"} awaiting triage"
+                } else {
+                    "Farmer reports sorted by risk"
+                },
             )
             state.error?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                ErrorBanner(
+                    message = error,
+                    onRetry = { viewModel.refresh() },
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             when {
                 state.isLoading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    LoadingState()
                 }
 
                 state.items.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "No pending cases",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    EmptyState(
+                        icon = Icons.Default.Pets,
+                        title = "All clear",
+                        message = "No pending cases right now. New farmer reports will appear here.",
+                    )
                 }
 
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp),
+                        contentPadding = PaddingValues(
+                            start = AppSpacing.Screen,
+                            end = AppSpacing.Screen,
+                            top = 4.dp,
+                            bottom = AppSpacing.ListBottom,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.report.id }) { item ->
-                            QueueCard(
-                                item = item,
-                                onClick = { onReportClick(item.report.id) },
-                                onQrScanClick = { onQrScanClick(item.report.id) },
-                                onMarkExamined = { viewModel.markAsExamined(item.report.id) },
-                            )
+                            FadeInContent {
+                                QueueCard(
+                                    item = item,
+                                    onClick = { onReportClick(item.report.id) },
+                                    onQrScanClick = { onQrScanClick(item.report.id) },
+                                    onMarkExamined = { viewModel.markAsExamined(item.report.id) },
+                                )
+                            }
                         }
                     }
                 }
@@ -146,9 +152,11 @@ private fun QueueCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = levelColor.copy(alpha = 0.06f),
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
             modifier = Modifier
@@ -159,93 +167,116 @@ private fun QueueCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.animal?.let { "${it.name} (${it.species})" }
                             ?: "Animal ${item.report.animalId.take(8)}",
                         style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        text = item.report.symptoms.joinToString(", "),
+                        text = item.report.symptoms.joinToString(", ").ifBlank { "No symptoms listed" },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
-                    Text(
-                        text = "Location: %.4f, %.4f".format(item.report.latitude, item.report.longitude),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        RiskBadge(level = item.riskLevel)
                         Text(
-                            text = "${prettifyStatus(item.report.status.dbValue)} · ${formatDateMillis(item.report.createdAt)}",
+                            text = prettifyStatus(item.report.status.dbValue),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
                         )
-                        RiskBadge(level = item.riskLevel)
+                    }
+                    Row(
+                        modifier = Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "%.4f, %.4f".format(item.report.latitude, item.report.longitude),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "· ${formatDateMillis(item.report.createdAt)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                Surface(
+                    color = levelColor.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(12.dp),
                 ) {
-                    Text(
-                        text = "Score ${item.report.riskScore}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = levelColor,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = item.report.riskScore.toString(),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = levelColor,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "score",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Button(
+                OutlinedButton(
                     onClick = onQrScanClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = levelColor,
-                    ),
+                    modifier = Modifier.weight(1f),
                 ) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = "Scan QR",
-                        modifier = Modifier.padding(end = 4.dp),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Scan QR",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
                 Button(
                     onClick = onMarkExamined,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                     ),
                 ) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Mark Examined",
-                        modifier = Modifier.padding(end = 4.dp),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Mark Examined",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        text = "Examined",
+                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
             }
@@ -257,8 +288,8 @@ private fun QueueCard(
 internal fun RiskBadge(level: RiskLevel) {
     val color = level.color()
     Surface(
-        color = color,
-        contentColor = Color.White,
+        color = color.copy(alpha = 0.14f),
+        contentColor = color,
         shape = RoundedCornerShape(50),
     ) {
         Text(

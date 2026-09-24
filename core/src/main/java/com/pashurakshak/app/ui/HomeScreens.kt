@@ -17,9 +17,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
@@ -466,44 +468,261 @@ private fun OverviewLine(
 @Composable
 fun VetHomeScreen(
     onOpenCaseQueue: () -> Unit,
+    onOpenAlerts: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
+    viewModel: com.pashurakshak.app.ui.vet.VetHomeViewModel = viewModel {
+        com.pashurakshak.app.ui.vet.VetHomeViewModel(
+            reportRepository = ServiceLocator.reportRepository,
+            alertRepository = ServiceLocator.alertRepository,
+        )
+    },
 ) {
-    val displayName = SessionManager.name?.takeIf { it.isNotBlank() } ?: "Vet"
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val displayName = SessionManager.name?.takeIf { it.isNotBlank() }
+        ?: SessionManager.email?.takeIf { it.isNotBlank() }
+        ?: "Vet"
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
 
     Scaffold(
         modifier = modifier,
         bottomBar = bottomBar,
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
+            contentPadding = PaddingValues(bottom = AppSpacing.ListBottom),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ScreenHeader(title = "Vet dashboard", subtitle = displayName)
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = AppSpacing.Screen),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                SectionCard(title = "Today") {
-                    Text(
-                        text = "Review the case queue to triage incoming farmer reports.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            item {
+                FadeInContent {
+                    VetHeroHeader(
+                        displayName = displayName,
+                        email = SessionManager.email,
+                        unreadAlerts = state.unreadAlertCount,
+                        onOpenProfile = onOpenProfile,
+                        onOpenAlerts = onOpenAlerts,
                     )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    androidx.compose.material3.Button(
-                        onClick = onOpenCaseQueue,
-                        modifier = Modifier.fillMaxWidth(),
+                }
+            }
+
+            item {
+                FadeInContent(delayMillis = 40) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppSpacing.Screen),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Open case queue")
+                        StatCard(
+                            label = "In queue",
+                            value = state.pendingCount.toString(),
+                            icon = Icons.Default.ContentPaste,
+                            accent = AppColors.Primary,
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenCaseQueue,
+                        )
+                        StatCard(
+                            label = "High risk",
+                            value = state.highRiskCount.toString(),
+                            icon = Icons.Default.Warning,
+                            accent = AppColors.Danger,
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenCaseQueue,
+                        )
+                        StatCard(
+                            label = "Examined",
+                            value = state.examinedCount.toString(),
+                            icon = Icons.Default.CheckCircle,
+                            accent = AppColors.Info,
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenCaseQueue,
+                        )
                     }
                 }
+            }
+
+            item {
+                FadeInContent(delayMillis = 80) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = AppSpacing.Screen),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SectionCard(title = "Quick actions") {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                QuickActionRow(
+                                    icon = Icons.Default.ContentPaste,
+                                    title = "Case queue",
+                                    subtitle = "Triage incoming farmer reports",
+                                    tint = AppColors.Primary,
+                                    onClick = onOpenCaseQueue,
+                                )
+                                QuickActionRow(
+                                    icon = Icons.Default.Notifications,
+                                    title = "Outbreak alerts",
+                                    subtitle = "High-risk broadcast notifications",
+                                    tint = AppColors.Danger,
+                                    onClick = onOpenAlerts,
+                                )
+                                QuickActionRow(
+                                    icon = Icons.Default.Person,
+                                    title = "Profile",
+                                    subtitle = "Account & sign out",
+                                    tint = AppColors.Info,
+                                    onClick = onOpenProfile,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                FadeInContent(delayMillis = 120) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = AppSpacing.Screen),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = "Overview",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        SectionCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OverviewLine(
+                                    label = "Pending cases",
+                                    value = state.pendingCount.toString(),
+                                    icon = Icons.Default.ContentPaste,
+                                    highlight = state.pendingCount > 0,
+                                )
+                                OverviewLine(
+                                    label = "High-risk cases",
+                                    value = state.highRiskCount.toString(),
+                                    icon = Icons.Default.Warning,
+                                    highlight = state.highRiskCount > 0,
+                                )
+                                OverviewLine(
+                                    label = "Unread alerts",
+                                    value = state.unreadAlertCount.toString(),
+                                    icon = Icons.Default.Notifications,
+                                    highlight = state.unreadAlertCount > 0,
+                                )
+                                OverviewLine(
+                                    label = "Email",
+                                    value = SessionManager.email?.takeIf { it.isNotBlank() } ?: "Not set",
+                                    icon = Icons.Default.Person,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VetHeroHeader(
+    displayName: String,
+    email: String?,
+    unreadAlerts: Int,
+    onOpenProfile: () -> Unit,
+    onOpenAlerts: () -> Unit,
+) {
+    val greeting = when {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 12 -> "Good morning"
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 17 -> "Good afternoon"
+        else -> "Good evening"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.Screen, vertical = 4.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(AppColors.Secondary, AppColors.Accent),
+                ),
+            ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MedicalServices,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "$greeting · Veterinarian",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.85f),
+                )
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                if (!email.isNullOrBlank()) {
+                    Text(
+                        text = email,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.85f),
+                        maxLines = 1,
+                    )
+                }
+            }
+            IconButton(
+                onClick = onOpenAlerts,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.18f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = "Alerts",
+                    tint = Color.White,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            IconButton(
+                onClick = onOpenProfile,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.18f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Profile",
+                    tint = Color.White,
+                )
             }
         }
     }

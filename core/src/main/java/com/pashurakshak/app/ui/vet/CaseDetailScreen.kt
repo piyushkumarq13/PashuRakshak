@@ -25,9 +25,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -49,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -65,6 +66,9 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.zxing.integration.android.IntentIntegrator
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.FadeInContent
+import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ReportPhoto
 import com.pashurakshak.app.ui.farmer.formatDateMillis
 import com.pashurakshak.app.ui.farmer.prettifyStatus
@@ -128,6 +132,7 @@ fun CaseDetailScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text("Case Detail") },
@@ -146,14 +151,7 @@ fun CaseDetailScreen(
         val report = state.report
         when {
             state.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                LoadingState(modifier = Modifier.padding(innerPadding))
             }
 
             report == null -> {
@@ -176,119 +174,133 @@ fun CaseDetailScreen(
                 val riskLevel = riskLevelFor(report.riskScore)
                 val levelColor = riskLevel.color()
 
-Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-                    // Risk score header
-                    Card {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = AppSpacing.Screen, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    FadeInContent {
+                        Card(
+                            shape = MaterialTheme.shapes.medium,
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                         ) {
-                            Text(
-                                text = "Risk score",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(AppSpacing.Card),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
-                                    text = report.riskScore.toString(),
-                                    style = MaterialTheme.typography.displaySmall,
-                                    color = levelColor,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "Risk score",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                RiskBadge(level = riskLevel)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Text(
+                                        text = report.riskScore.toString(),
+                                        style = MaterialTheme.typography.displaySmall,
+                                        color = levelColor,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    RiskBadge(level = riskLevel)
+                                }
+                                Text(
+                                    text = "Status: ${prettifyStatus(report.status.dbValue)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                             }
+                        }
+                    }
+
+                    FadeInContent(delayMillis = 40) {
+                        DetailSection(title = "Animal") {
                             Text(
-                                text = "Status: ${prettifyStatus(report.status.dbValue)}",
-                                style = MaterialTheme.typography.bodyMedium,
+                                text = state.animal?.let { "${it.name} (${it.species})" }
+                                    ?: "Animal ${report.animalId.take(8)}",
+                                style = MaterialTheme.typography.bodyLarge,
                             )
                         }
                     }
 
-                    // Animal
-                    DetailSection(title = "Animal") {
-                        Text(
-                            text = state.animal?.let { "${it.name} (${it.species})" }
-                                ?: "Animal ${report.animalId.take(8)}",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-
-                    // Symptoms
-                    DetailSection(title = "Symptoms") {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            report.symptoms.forEach { symptom ->
-                                Surface(
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    shape = RoundedCornerShape(50),
-                                ) {
-                                    Text(
-                                        text = symptom,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    )
+                    FadeInContent(delayMillis = 60) {
+                        DetailSection(title = "Symptoms") {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                report.symptoms.forEach { symptom ->
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                        shape = RoundedCornerShape(50),
+                                    ) {
+                                        Text(
+                                            text = symptom,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Meta details
-                    DetailSection(title = "Details") {
-                        DetailRow("Reported by", report.farmerId)
-                        DetailRow(
-                            label = "Location",
-                            value = "%.4f, %.4f".format(report.latitude, report.longitude),
-                        )
-                        DetailRow("Captured", formatDateMillis(report.createdAt))
-                    }
-
-                    // Photo
-                    DetailSection(title = "Photo") {
-                        ReportPhoto(
-                            report = report,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-
-                    // Why this score
-                    WhyThisScoreCard(
-                        totalScore = report.riskScore,
-                        breakdown = report.riskBreakdown,
-                        levelColor = levelColor,
-                    )
-
-                    // QR Scan
-                    if (state.canMarkExamined) {
-                        Button(
-                            onClick = {
-                                val activity = context as android.app.Activity
-                                val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
-                                intent.putExtra("MODE", IntentIntegrator.QR_CODE)
-                                intent.putExtra("PROMPT_MESSAGE", "Scan animal QR to verify visit")
-                                barcodeLauncher.launch(intent)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Scan QR to Verify Visit")
+                    FadeInContent(delayMillis = 80) {
+                        DetailSection(title = "Details") {
+                            DetailRow("Reported by", report.farmerId)
+                            DetailRow(
+                                label = "Location",
+                                value = "%.4f, %.4f".format(report.latitude, report.longitude),
+                            )
+                            DetailRow("Captured", formatDateMillis(report.createdAt))
                         }
                     }
 
-                    // Scanned QR status
+                    FadeInContent(delayMillis = 100) {
+                        DetailSection(title = "Photo") {
+                            ReportPhoto(
+                                report = report,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+
+                    FadeInContent(delayMillis = 120) {
+                        WhyThisScoreCard(
+                            totalScore = report.riskScore,
+                            breakdown = report.riskBreakdown,
+                            levelColor = levelColor,
+                        )
+                    }
+
+                    if (state.canMarkExamined) {
+                        FadeInContent(delayMillis = 140) {
+                            Button(
+                                onClick = {
+                                    val activity = context as android.app.Activity
+                                    val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
+                                    intent.putExtra("MODE", IntentIntegrator.QR_CODE)
+                                    intent.putExtra("PROMPT_MESSAGE", "Scan animal QR to verify visit")
+                                    barcodeLauncher.launch(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 8.dp),
+                                )
+                                Text("Scan QR to Verify Visit")
+                            }
+                        }
+                    }
+
                     if (state.isQrScanned) {
                         Surface(
                             color = MaterialTheme.colorScheme.primaryContainer,
@@ -302,7 +314,6 @@ Column(
                         }
                     }
 
-                    // Assessment options (unlocked after QR scan)
                     if (state.isQrScanned) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Assessment", style = MaterialTheme.typography.titleSmall)
@@ -321,7 +332,6 @@ Column(
                         }
                     }
 
-                    // Location
                     if (state.isQrScanned) {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -364,7 +374,6 @@ Column(
                         }
                     }
 
-                    // Mark Examined
                     if (state.canMarkExamined) {
                         Button(
                             onClick = { showFieldCheck = true },
@@ -380,7 +389,6 @@ Column(
                         )
                     }
 
-                    // Submit Visit
                     if (state.canSubmitVisit) {
                         Button(
                             onClick = { showVisitDialog = true },
@@ -469,11 +477,14 @@ private fun DetailSection(
     title: String,
     content: @Composable () -> Unit,
 ) {
-    Card {
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(AppSpacing.Card),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
@@ -515,11 +526,14 @@ private fun WhyThisScoreCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Card {
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(AppSpacing.Card),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
