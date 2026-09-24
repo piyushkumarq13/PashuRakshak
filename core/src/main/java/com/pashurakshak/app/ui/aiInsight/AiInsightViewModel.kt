@@ -49,9 +49,11 @@ class AiInsightViewModel(private val reportId: String, initialAdvisory: String? 
 
     private suspend fun fetchChat(): List<ChatMessage> = withContext(Dispatchers.IO) {
         try {
+            val baseUrl = BuildConfig.API_BASE_URL
+            if (baseUrl.isBlank()) return@withContext emptyList()
             val sessionToken = SessionManager.sessionToken ?: return@withContext emptyList()
-            val connection = URL("${BuildConfig.API_BASE_URL}/api/v1/pashu-health/reports/$reportId/chat")
-                .openConnection() as HttpURLConnection
+            val url = URL("$baseUrl/api/v1/pashu-health/reports/${reportId}/chat")
+            val connection = url.openConnection() as HttpURLConnection
             try {
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 15_000
@@ -116,10 +118,11 @@ class AiInsightViewModel(private val reportId: String, initialAdvisory: String? 
 
     private suspend fun sendChat(message: String): String? = withContext(Dispatchers.IO) {
         try {
+            val baseUrl = BuildConfig.API_BASE_URL
+            if (baseUrl.isBlank()) return@withContext null
             val sessionToken = SessionManager.sessionToken ?: return@withContext null
             val payload = JSONObject().put("message", message)
-            val connection = URL("${BuildConfig.API_BASE_URL}/api/v1/pashu-health/reports/$reportId/chat")
-                .openConnection() as HttpURLConnection
+            val connection = URL("$baseUrl/api/v1/pashu-health/reports/${reportId}/chat").openConnection() as HttpURLConnection
             try {
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 15_000

@@ -37,10 +37,10 @@ class ReportRepository(private val db: TursoClient) {
             report.status.dbValue,
             if (report.synced) 1 else 0,
             report.createdAt,
-            report.assignedVetId,
-            report.aiAdvisory,
-            report.vetAssessment,
-            report.village,
+            report.assignedVetId ?: "",
+            report.aiAdvisory ?: "",
+            report.vetAssessment ?: "",
+            report.village ?: "",
         )
     }
 
@@ -106,10 +106,10 @@ class ReportRepository(private val db: TursoClient) {
             report.status.dbValue,
             if (report.synced) 1 else 0,
             report.createdAt,
-            report.assignedVetId,
-            report.aiAdvisory,
-            report.vetAssessment,
-            report.village,
+            report.assignedVetId ?: "",
+            report.aiAdvisory ?: "",
+            report.vetAssessment ?: "",
+            report.village ?: "",
             report.id,
         )
     }
