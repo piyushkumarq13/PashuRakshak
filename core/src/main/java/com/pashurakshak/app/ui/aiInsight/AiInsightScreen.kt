@@ -31,13 +31,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -89,18 +84,14 @@ fun AiInsightScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            reverseLayout = false,
         ) {
             if (state.isLoading) {
-                item {
-                    CenterProgress()
-                }
+                item { CenterProgress() }
             } else if (state.aiAdvisory != null && state.messages.isEmpty()) {
                 item {
                     MessageBubble(
                         role = "assistant",
                         text = state.aiAdvisory!!,
-                        isFirst = true,
                     )
                 }
             } else if (state.aiAdvisory == null && state.messages.isEmpty()) {
@@ -115,7 +106,6 @@ fun AiInsightScreen(
                     MessageBubble(
                         role = "assistant",
                         text = state.aiAdvisory!!,
-                        isFirst = false,
                     )
                 }
             }
@@ -123,7 +113,6 @@ fun AiInsightScreen(
                 MessageBubble(
                     role = message.role,
                     text = message.text,
-                    isFirst = false,
                 )
             }
             if (state.isSending) {
@@ -153,10 +142,11 @@ fun AiInsightScreen(
 }
 
 @Composable
-private fun MessageBubble(role: String, text: String, isFirst: Boolean = false) {
+private fun MessageBubble(role: String, text: String) {
     val isUser = role == "user"
     Surface(
-        color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -169,7 +159,8 @@ private fun MessageBubble(role: String, text: String, isFirst: Boolean = false) 
             Text(
                 text = if (isUser) "You" else "AI Assistant",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isUser) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(modifier = Modifier.height(4.dp))
@@ -191,7 +182,7 @@ private fun MessageInput(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp,
+        shadowElevation = 4.dp,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -209,7 +200,6 @@ private fun MessageInput(
                 label = { Text("Type a message...") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                maxLines = 4,
             )
             Button(
                 onClick = onSend,
