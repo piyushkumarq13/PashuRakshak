@@ -32,21 +32,29 @@ class AlertsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-            runCatching {
-                if (recipientId == null) {
-                    alertRepository.getForRole(recipientRole)
-                } else {
-                    alertRepository.getForRecipient(recipientRole, recipientId)
-                }
-            }.onSuccess { alerts ->
-                _uiState.update { it.copy(isLoading = false, alerts = alerts) }
+            runCatching { loadAlerts() }.onSuccess { alerts ->
+                _uiState.update { it.copy(isLoading = false, alerts = alerts, error = null) }
             }.onFailure { error ->
-                _uiState.update { it.copy(isLoading = false, error = error.message ?: "Failed to load alerts") }
+                _uiState.update {
+                    it.copy(isLoading = false, error = error.message ?: "Failed to load alerts")
+                }
+            }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { loadAlerts() }.onSuccess { alerts ->
+                    _uiState.update { it.copy(isLoading = false, alerts = alerts) }
+                }
             }
         }
     }
+
+    private suspend fun loadAlerts(): List<Alert> =
+        if (recipientId == null) {
+            alertRepository.getForRole(recipientRole)
+        } else {
+            alertRepository.getForRecipient(recipientRole, recipientId)
+        }
 
     fun onAlertClicked(alert: Alert) {
         if (alert.read) return

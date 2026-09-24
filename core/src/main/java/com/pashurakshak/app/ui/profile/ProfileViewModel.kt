@@ -16,6 +16,7 @@ data class ProfileUiState(
     val isSaving: Boolean = false,
     val editing: Boolean = false,
     val loggedOut: Boolean = false,
+    val isVet: Boolean = false,
     val name: String = "",
     val email: String = "",
     val phone: String = "",
@@ -27,7 +28,8 @@ data class ProfileUiState(
     val error: String? = null,
 ) {
     val canSave: Boolean
-        get() = name.isNotBlank() && village.isNotBlank() && pincode.isNotBlank()
+        get() = if (isVet) name.isNotBlank()
+        else name.isNotBlank() && village.isNotBlank() && pincode.isNotBlank()
 }
 
 class ProfileViewModel(
@@ -39,17 +41,34 @@ class ProfileViewModel(
 
     private var baseline = ProfileUiState()
 
-    fun load() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+    private val isVetRole: Boolean =
+        SessionManager.role == SessionManager.Role.VET ||
+            SessionManager.appRole == SessionManager.Role.VET
 
-            var name = SessionManager.name.orEmpty()
-            var email = SessionManager.email.orEmpty()
-            var village = SessionManager.village.orEmpty()
-            var pincode = SessionManager.pincode.orEmpty()
+    fun load() {
+        // Paint instantly from the local session — never block the UI on network.
+        val local = ProfileUiState(
+            isLoading = false,
+            isVet = isVetRole,
+            name = SessionManager.name.orEmpty(),
+            email = SessionManager.email.orEmpty(),
+            phone = SessionManager.phone.orEmpty(),
+            village = SessionManager.village.orEmpty(),
+            pincode = SessionManager.pincode.orEmpty(),
+            animalCountText = SessionManager.animalCount.toString(),
+            language = SessionManager.preferredLanguage ?: "hi",
+        )
+        baseline = local
+        _uiState.update { local }
+
+        // Refresh user + farmer profile in the background; don't clobber active edits.
+        viewModelScope.launch {
+            var name = local.name
+            var email = local.email
+            var language = local.language
+            var village = local.village
+            var pincode = local.pincode
             var animalCount = SessionManager.animalCount
-            var language = SessionManager.preferredLanguage ?: "hi"
 
             when (val userResult = farmerRepository.getProfile()) {
                 is FarmerRepository.Result.Success -> {
@@ -59,27 +78,27 @@ class ProfileViewModel(
                         if (user.preferredLanguage.isNotBlank()) language = user.preferredLanguage
                     }
                 }
-                is FarmerRepository.Result.Failure -> {
-                    // Keep local SessionManager values if the network fails.
-                }
+                is FarmerRepository.Result.Failure -> Unit
             }
 
-            when (val profileResult = farmerRepository.getFarmerProfile()) {
-                is FarmerRepository.ProfileResult.Success -> {
-                    profileResult.profile?.let { profile ->
-                        if (profile.village.isNotBlank()) village = profile.village
-                        if (profile.pincode.isNotBlank()) pincode = profile.pincode
-                        animalCount = profile.animalCount
+            if (!isVetRole) {
+                when (val profileResult = farmerRepository.getFarmerProfile()) {
+                    is FarmerRepository.ProfileResult.Success -> {
+                        profileResult.profile?.let { profile ->
+                            if (profile.village.isNotBlank()) village = profile.village
+                            if (profile.pincode.isNotBlank()) pincode = profile.pincode
+                            animalCount = profile.animalCount
+                        }
                     }
+                    is FarmerRepository.ProfileResult.Failure -> Unit
                 }
-                is FarmerRepository.ProfileResult.Failure -> Unit
             }
 
-            val loaded = ProfileUiState(
+            if (_uiState.value.editing) return@launch
+            val loaded = local.copy(
                 isLoading = false,
                 name = name,
                 email = email,
-                phone = SessionManager.phone.orEmpty(),
                 village = village,
                 pincode = pincode,
                 animalCountText = animalCount.toString(),
@@ -127,26 +146,41 @@ class ProfileViewModel(
                 return@launch
             }
 
-            val profileUpdate = farmerRepository.updateFarmerProfile(
-                animalCount = animalCount,
-                village = current.village.trim(),
-                pincode = current.pincode.trim(),
-            )
-            if (profileUpdate is FarmerRepository.ProfileResult.Failure) {
-                _uiState.update {
-                    it.copy(isSaving = false, error = profileUpdate.message)
+            // Vets don't have a farmer-profile row — only update the shared user record.
+            if (!current.isVet) {
+                val profileUpdate = farmerRepository.updateFarmerProfile(
+                    animalCount = animalCount,
+                    village = current.village.trim(),
+                    pincode = current.pincode.trim(),
+                )
+                if (profileUpdate is FarmerRepository.ProfileResult.Failure) {
+                    _uiState.update {
+                        it.copy(isSaving = false, error = profileUpdate.message)
+                    }
+                    return@launch
                 }
-                return@launch
             }
 
-            SessionManager.setFarmerProfile(
-                name = current.name.trim(),
-                email = current.email.trim(),
-                preferredLanguage = current.language,
-                animalCount = animalCount,
-                village = current.village.trim(),
-                pincode = current.pincode.trim(),
-            )
+            if (current.isVet) {
+                // Vets only have the shared user record — preserve farmer-profile session fields.
+                SessionManager.setFarmerProfile(
+                    name = current.name.trim(),
+                    email = current.email.trim(),
+                    preferredLanguage = current.language,
+                    animalCount = SessionManager.animalCount,
+                    village = SessionManager.village.orEmpty(),
+                    pincode = SessionManager.pincode.orEmpty(),
+                )
+            } else {
+                SessionManager.setFarmerProfile(
+                    name = current.name.trim(),
+                    email = current.email.trim(),
+                    preferredLanguage = current.language,
+                    animalCount = animalCount,
+                    village = current.village.trim(),
+                    pincode = current.pincode.trim(),
+                )
+            }
 
             val saved = current.copy(
                 isSaving = false,

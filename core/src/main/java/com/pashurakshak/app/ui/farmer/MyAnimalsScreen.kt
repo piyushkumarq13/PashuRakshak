@@ -53,7 +53,6 @@ import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
 import com.pashurakshak.app.ui.components.ErrorBanner
-import com.pashurakshak.app.ui.components.FadeInContent
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.StatusPill
@@ -145,12 +144,10 @@ fun MyAnimalsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.animals, key = { it.animal.id }) { item ->
-                            FadeInContent {
-                                AnimalCard(
-                                    item = item,
-                                    onClick = { onAnimalClick(item.animal.id) },
-                                )
-                            }
+                            AnimalCard(
+                                item = item,
+                                onClick = { onAnimalClick(item.animal.id) },
+                            )
                         }
                     }
                 }

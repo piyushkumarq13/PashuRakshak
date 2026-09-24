@@ -34,35 +34,42 @@ class VetHomeViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+            // Local-first: show cached stats immediately.
             runCatching {
-                val reports = reportRepository.getAll()
-                val pending = reports.filter {
-                    it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
-                }
-                val examined = reports.count {
-                    it.status != ReportStatus.REPORTED && it.status != ReportStatus.VET_ASSIGNED
-                }
-                val alerts = alertRepository.getAll()
-                    .filter { it.recipientRole == "vet" && !it.read }
-                VetHomeUiState(
-                    isLoading = false,
-                    pendingCount = pending.size,
-                    highRiskCount = pending.count { riskLevelFor(it.riskScore) == RiskLevel.HIGH },
-                    examinedCount = examined,
-                    unreadAlertCount = alerts.size,
-                )
+                buildState()
             }.onSuccess { state ->
                 _uiState.update { state }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = error.message ?: "Failed to load dashboard",
-                    )
+                    it.copy(isLoading = false, error = error.message ?: "Failed to load dashboard")
+                }
+            }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { buildState() }.onSuccess { state ->
+                    _uiState.update { state }
                 }
             }
         }
+    }
+
+    private suspend fun buildState(): VetHomeUiState {
+        val reports = reportRepository.getAll()
+        val pending = reports.filter {
+            it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
+        }
+        val examined = reports.count {
+            it.status != ReportStatus.REPORTED && it.status != ReportStatus.VET_ASSIGNED
+        }
+        val alerts = alertRepository.getAll()
+            .filter { it.recipientRole == "vet" && !it.read }
+        return VetHomeUiState(
+            isLoading = false,
+            pendingCount = pending.size,
+            highRiskCount = pending.count { riskLevelFor(it.riskScore) == RiskLevel.HIGH },
+            examinedCount = examined,
+            unreadAlertCount = alerts.size,
+        )
     }
 }

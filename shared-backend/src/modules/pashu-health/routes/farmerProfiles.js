@@ -47,7 +47,7 @@ router.post('/', verifySession, async (req, res) => {
     const now = Date.now();
 
     const existing = await db.execute({
-      sql: 'SELECT id FROM pashu_farmer_profiles WHERE user_id = ?',
+      sql: 'SELECT user_id FROM pashu_farmer_profiles WHERE user_id = ?',
       args: [userId],
     });
 

@@ -40,28 +40,8 @@ class HomeViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-            runCatching {
-                val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
-                val reports = reportRepository.getByFarmer(farmerId)
-                val vaccinations = animals.flatMap { animal ->
-                    vaccinationRepository.getByAnimal(animal.id)
-                }
-                val now = System.currentTimeMillis()
-                val soon = now + 30L * 24 * 60 * 60 * 1000
-                val dueSoon = vaccinations.count { it.nextDue in now..soon || it.nextDue < now }
-                val alerts = alertRepository.getAll()
-                    .filter { it.recipientRole == "farmer" && it.recipientId == farmerId }
-                HomeUiState(
-                    isLoading = false,
-                    animalCount = animals.size,
-                    reportCount = reports.size,
-                    activeReportCount = reports.count { it.status != ReportStatus.RESOLVED },
-                    unreadAlertCount = alerts.count { !it.read },
-                    vaccinationsDue = dueSoon,
-                )
-            }.onSuccess { state ->
+            // Paint local data immediately so the UI never waits on the network.
+            runCatching { buildState() }.onSuccess { state ->
                 _uiState.update { state }
             }.onFailure { error ->
                 _uiState.update {
@@ -71,6 +51,35 @@ class HomeViewModel(
                     )
                 }
             }
+
+            // Refresh from the backend in the background, then repaint.
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { buildState() }.onSuccess { state ->
+                    _uiState.update { state }
+                }
+            }
         }
+    }
+
+    private suspend fun buildState(): HomeUiState {
+        val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
+        val reports = reportRepository.getByFarmer(farmerId)
+        val vaccinations = animals.flatMap { animal ->
+            vaccinationRepository.getByAnimal(animal.id)
+        }
+        val now = System.currentTimeMillis()
+        val soon = now + 30L * 24 * 60 * 60 * 1000
+        val dueSoon = vaccinations.count { it.nextDue in now..soon || it.nextDue < now }
+        val alerts = alertRepository.getAll()
+            .filter { it.recipientRole == "farmer" && it.recipientId == farmerId }
+        return HomeUiState(
+            isLoading = false,
+            animalCount = animals.size,
+            reportCount = reports.size,
+            activeReportCount = reports.count { it.status != ReportStatus.RESOLVED },
+            unreadAlertCount = alerts.count { !it.read },
+            vaccinationsDue = dueSoon,
+        )
     }
 }

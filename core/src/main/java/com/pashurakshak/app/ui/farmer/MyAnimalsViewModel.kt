@@ -44,25 +44,32 @@ class MyAnimalsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.syncAll() }
-            runCatching {
-                val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
-                val reportsByAnimal = reportRepository.getAll().groupBy { it.animalId }
-                animals.map { animal ->
-                    val latest = reportsByAnimal[animal.id]?.maxByOrNull { it.createdAt }
-                    val status = if (latest == null || latest.status == ReportStatus.RESOLVED) {
-                        HealthStatus.HEALTHY
-                    } else {
-                        HealthStatus.UNDER_OBSERVATION
-                    }
-                    AnimalWithStatus(animal, status)
-                }
-            }.onSuccess { animals ->
-                _uiState.update { it.copy(isLoading = false, animals = animals) }
+            runCatching { loadAnimals() }.onSuccess { animals ->
+                _uiState.update { it.copy(isLoading = false, animals = animals, error = null) }
             }.onFailure { error ->
                 _uiState.update { it.copy(isLoading = false, error = error.message ?: "Failed to load animals") }
             }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { loadAnimals() }.onSuccess { animals ->
+                    _uiState.update { it.copy(isLoading = false, animals = animals) }
+                }
+            }
+        }
+    }
+
+    private suspend fun loadAnimals(): List<AnimalWithStatus> {
+        val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
+        val reportsByAnimal = reportRepository.getAll().groupBy { it.animalId }
+        return animals.map { animal ->
+            val latest = reportsByAnimal[animal.id]?.maxByOrNull { it.createdAt }
+            val status = if (latest == null || latest.status == ReportStatus.RESOLVED) {
+                HealthStatus.HEALTHY
+            } else {
+                HealthStatus.UNDER_OBSERVATION
+            }
+            AnimalWithStatus(animal, status)
         }
     }
 

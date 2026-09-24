@@ -57,7 +57,6 @@ import com.pashurakshak.app.ui.components.AccentDot
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
 import com.pashurakshak.app.ui.components.ErrorBanner
-import com.pashurakshak.app.ui.components.FadeInContent
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.StatusPill
@@ -156,9 +155,7 @@ fun VaccinationStatusScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.animal.id }) { item ->
-                            FadeInContent {
-                                VaccinationCard(item = item)
-                            }
+                            VaccinationCard(item = item)
                         }
                     }
                 }

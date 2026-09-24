@@ -32,7 +32,6 @@ import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
 import com.pashurakshak.app.ui.components.ErrorBanner
-import com.pashurakshak.app.ui.components.FadeInContent
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.StatusPill
@@ -105,9 +104,7 @@ fun MyReportsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.report.id }) { item ->
-                            FadeInContent {
-                                ReportCard(item = item, onReportClick = onReportClick)
-                            }
+                            ReportCard(item = item, onReportClick = onReportClick)
                         }
                     }
                 }

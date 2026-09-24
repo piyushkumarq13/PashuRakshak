@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,7 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -399,20 +400,29 @@ fun ErrorBanner(
     }
 }
 
-/** Fades + slides content in once (used for list/screen entrances). */
+/**
+ * Fades content in once. Delay is applied before the enter animation so staggered
+ * sections don't all animate on the same frame. Uses a short fade only (no slide)
+ * to keep recomposition cheap on low-end devices.
+ */
 @Composable
 fun FadeInContent(
     visible: Boolean = true,
     delayMillis: Int = 0,
     content: @Composable () -> Unit,
 ) {
-    LaunchedEffect(visible) {
-        if (delayMillis > 0) delay(delayMillis.toLong())
+    // Start hidden when a delay is requested so the enter animation actually staggers.
+    var started by remember(delayMillis) { mutableStateOf(delayMillis <= 0) }
+    LaunchedEffect(visible, delayMillis) {
+        if (visible && !started) {
+            if (delayMillis > 0) delay(delayMillis.toLong())
+            started = true
+        }
     }
     AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(280)) + slideInVertically(tween(280)) { it / 6 },
-        exit = fadeOut(tween(160)),
+        visible = visible && started,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(120)),
     ) {
         content()
     }

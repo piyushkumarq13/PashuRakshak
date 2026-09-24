@@ -60,33 +60,40 @@ class VetCaseQueueViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            // Pull latest from backend first (best-effort) so the queue is multi-device.
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-            runCatching {
-                val animalsById = animalRepository.getAll().associateBy { it.id }
-                reportRepository.getAll()
-                    .filter {
-                        it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
-                    }
-                    .sortedWith(
-                        compareByDescending<SymptomReport> { it.riskScore }
-                            .thenByDescending { it.createdAt },
-                    )
-                    .map { report ->
-                        QueueItem(
-                            report = report,
-                            animal = animalsById[report.animalId],
-                            riskLevel = riskLevelFor(report.riskScore),
-                        )
-                    }
-            }.onSuccess { items ->
-                _uiState.update { it.copy(isLoading = false, items = items) }
+            // Local-first: show the cached queue immediately.
+            runCatching { loadQueue() }.onSuccess { items ->
+                _uiState.update { it.copy(isLoading = false, items = items, error = null) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message ?: "Failed to load case queue")
                 }
             }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { loadQueue() }.onSuccess { items ->
+                    _uiState.update { it.copy(isLoading = false, items = items) }
+                }
+            }
         }
+    }
+
+    private suspend fun loadQueue(): List<QueueItem> {
+        val animalsById = animalRepository.getAll().associateBy { it.id }
+        return reportRepository.getAll()
+            .filter {
+                it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
+            }
+            .sortedWith(
+                compareByDescending<SymptomReport> { it.riskScore }
+                    .thenByDescending { it.createdAt },
+            )
+            .map { report ->
+                QueueItem(
+                    report = report,
+                    animal = animalsById[report.animalId],
+                    riskLevel = riskLevelFor(report.riskScore),
+                )
+            }
     }
 }

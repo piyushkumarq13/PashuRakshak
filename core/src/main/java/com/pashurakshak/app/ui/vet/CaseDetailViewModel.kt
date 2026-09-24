@@ -73,22 +73,32 @@ class CaseDetailViewModel(
 
     private fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-            runCatching {
-                val report = reportRepository.getById(reportId) ?: error("Report not found")
-                val animal = animalRepository.getById(report.animalId)
-                report to animal
-            }.onSuccess { (report, animal) ->
+            // Local-first: show the cached report immediately.
+            runCatching { loadLocal() }.onSuccess { (report, animal) ->
                 _uiState.update {
-                    it.copy(isLoading = false, report = report, animal = animal)
+                    it.copy(isLoading = false, report = report, animal = animal, error = null)
                 }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message ?: "Failed to load case")
                 }
             }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { loadLocal() }.onSuccess { (report, animal) ->
+                    _uiState.update {
+                        it.copy(isLoading = false, report = report, animal = animal)
+                    }
+                }
+            }
         }
+    }
+
+    private suspend fun loadLocal(): Pair<SymptomReport, Animal?> {
+        val report = reportRepository.getById(reportId) ?: error("Report not found")
+        val animal = animalRepository.getById(report.animalId)
+        return report to animal
     }
 
     fun submitFieldCheck(sampleRequired: Boolean) {

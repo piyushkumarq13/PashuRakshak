@@ -138,36 +138,47 @@ fun ProfileScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             OutlinedTextField(
+                                value = state.phone,
+                                onValueChange = {},
+                                enabled = false,
+                                label = { Text("Phone (cannot be changed)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            OutlinedTextField(
                                 value = state.email,
-                                onValueChange = viewModel::onEmailChanged,
-                                label = { Text("Email") },
+                                onValueChange = { if (!state.isVet) viewModel.onEmailChanged(it) },
+                                enabled = !state.isVet,
+                                label = { Text(if (state.isVet) "Email (cannot be changed)" else "Email") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            OutlinedTextField(
-                                value = state.village,
-                                onValueChange = viewModel::onVillageChanged,
-                                label = { Text("Village") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            OutlinedTextField(
-                                value = state.pincode,
-                                onValueChange = viewModel::onPincodeChanged,
-                                label = { Text("Pincode") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            OutlinedTextField(
-                                value = state.animalCountText,
-                                onValueChange = viewModel::onAnimalCountChanged,
-                                label = { Text("Number of animals") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            if (!state.isVet) {
+                                OutlinedTextField(
+                                    value = state.village,
+                                    onValueChange = viewModel::onVillageChanged,
+                                    label = { Text("Village") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                OutlinedTextField(
+                                    value = state.pincode,
+                                    onValueChange = viewModel::onPincodeChanged,
+                                    label = { Text("Pincode") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                OutlinedTextField(
+                                    value = state.animalCountText,
+                                    onValueChange = viewModel::onAnimalCountChanged,
+                                    label = { Text("Number of animals") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             Column {
                                 Text(
                                     text = "Preferred language",
@@ -194,9 +205,11 @@ fun ProfileScreen(
                             ProfileRow(label = "Name", value = state.name.ifBlank { "Not set" })
                             ProfileRow(label = "Phone", value = state.phone.ifBlank { "—" }, prefix = "+91 ")
                             ProfileRow(label = "Email", value = state.email.ifBlank { "Not set" })
-                            ProfileRow(label = "Village", value = state.village.ifBlank { "Not set" })
-                            ProfileRow(label = "Pincode", value = state.pincode.ifBlank { "Not set" })
-                            ProfileRow(label = "Animals", value = state.animalCountText.ifBlank { "0" })
+                            if (!state.isVet) {
+                                ProfileRow(label = "Village", value = state.village.ifBlank { "Not set" })
+                                ProfileRow(label = "Pincode", value = state.pincode.ifBlank { "Not set" })
+                                ProfileRow(label = "Animals", value = state.animalCountText.ifBlank { "0" })
+                            }
                             ProfileRow(
                                 label = "Language",
                                 value = if (state.language == "en") "English" else "Hindi",

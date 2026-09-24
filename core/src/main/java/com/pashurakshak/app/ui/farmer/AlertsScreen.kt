@@ -36,7 +36,6 @@ import com.pashurakshak.app.ui.components.AccentDot
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
 import com.pashurakshak.app.ui.components.ErrorBanner
-import com.pashurakshak.app.ui.components.FadeInContent
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.theme.AppColors
@@ -101,12 +100,10 @@ fun AlertsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.alerts, key = { it.id }) { alert ->
-                            FadeInContent {
-                                AlertCard(
-                                    alert = alert,
-                                    onClick = { viewModel.onAlertClicked(alert) },
-                                )
-                            }
+                            AlertCard(
+                                alert = alert,
+                                onClick = { viewModel.onAlertClicked(alert) },
+                            )
                         }
                     }
                 }

@@ -44,8 +44,8 @@ class FarmerRepository {
                 .openConnection() as HttpURLConnection
             try {
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
+                connection.connectTimeout = 8_000
+                connection.readTimeout = 12_000
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
                 connection.setRequestProperty("Authorization", "Bearer $sessionToken")
@@ -91,8 +91,8 @@ class FarmerRepository {
                 .openConnection() as HttpURLConnection
             try {
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
+                connection.connectTimeout = 8_000
+                connection.readTimeout = 12_000
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
                 connection.setRequestProperty("Authorization", "Bearer $sessionToken")
@@ -221,8 +221,8 @@ class FarmerRepository {
                 .openConnection() as HttpURLConnection
             try {
                 connection.requestMethod = "PUT"
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
+                connection.connectTimeout = 8_000
+                connection.readTimeout = 12_000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)

@@ -47,25 +47,32 @@ class VaccinationStatusViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-            runCatching {
-                val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
-                animals.map { animal ->
-                    val vaccinations = vaccinationRepository.getByAnimal(animal.id)
-                    AnimalVaccinationStatus(
-                        animal = animal,
-                        vaccinations = vaccinations.sortedByDescending { it.dateGiven },
-                        nextDue = vaccinations.minOfOrNull { it.nextDue },
-                    )
-                }
-            }.onSuccess { items ->
-                _uiState.update { it.copy(isLoading = false, items = items) }
+            runCatching { loadItems() }.onSuccess { items ->
+                _uiState.update { it.copy(isLoading = false, items = items, error = null) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message ?: "Failed to load vaccinations")
                 }
             }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { loadItems() }.onSuccess { items ->
+                    _uiState.update { it.copy(isLoading = false, items = items) }
+                }
+            }
+        }
+    }
+
+    private suspend fun loadItems(): List<AnimalVaccinationStatus> {
+        val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
+        return animals.map { animal ->
+            val vaccinations = vaccinationRepository.getByAnimal(animal.id)
+            AnimalVaccinationStatus(
+                animal = animal,
+                vaccinations = vaccinations.sortedByDescending { it.dateGiven },
+                nextDue = vaccinations.minOfOrNull { it.nextDue },
+            )
         }
     }
 

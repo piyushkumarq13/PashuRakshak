@@ -13,6 +13,10 @@ import com.pashurakshak.app.data.local.SymptomReport
 import com.pashurakshak.app.data.local.Vaccination
 import com.pashurakshak.app.di.ServiceLocator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -31,6 +35,11 @@ object RemoteSync {
 
     private const val TAG = "RemoteSync"
     private val baseUrl: String get() = BuildConfig.API_BASE_URL
+
+    /** Coalesce concurrent pullAll() calls so screens don't stack network storms. */
+    private val pullMutex = Mutex()
+    private var lastPullAt = 0L
+    private const val PULL_MIN_INTERVAL_MS = 4_000L
 
     suspend fun syncAll() {
         pushLocals()
@@ -93,12 +102,25 @@ object RemoteSync {
         }
     }
 
-    /** Pull remote → local. Order matters (FK): animals → vaccinations → reports → alerts. */
+    /**
+     * Pull remote → local. Animals first (FK), then vaccinations/reports/alerts in parallel.
+     * Concurrent callers within [PULL_MIN_INTERVAL_MS] share the in-flight pull.
+     */
     suspend fun pullAll() = withContext(Dispatchers.IO) {
-        pullAnimals()
-        pullVaccinations()
-        pullReports()
-        pullAlerts()
+        pullMutex.withLock {
+            val now = System.currentTimeMillis()
+            if (now - lastPullAt < PULL_MIN_INTERVAL_MS) return@withLock
+            pullAnimals()
+            coroutineScope {
+                val vaccinations = async { pullVaccinations() }
+                val reports = async { pullReports() }
+                val alerts = async { pullAlerts() }
+                vaccinations.await()
+                reports.await()
+                alerts.await()
+            }
+            lastPullAt = System.currentTimeMillis()
+        }
     }
 
     private suspend fun pullAnimals() {
@@ -240,8 +262,8 @@ object RemoteSync {
     private fun open(rawUrl: String, method: String): HttpURLConnection {
         val connection = URL(rawUrl).openConnection() as HttpURLConnection
         connection.requestMethod = method
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 30_000
+        connection.connectTimeout = 8_000
+        connection.readTimeout = 15_000
         connection.instanceFollowRedirects = false
         return connection
     }

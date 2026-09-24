@@ -42,29 +42,36 @@ class MyReportsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-            runCatching {
-                val animalsById = animalRepository.getAll().associateBy { it.id }
-                reportRepository.getByFarmer(farmerId)
-                    .sortedByDescending { it.createdAt }
-                    .map { report ->
-                        val animal = animalsById[report.animalId]
-                        val status = report.status
-                        val vetVisited = status == ReportStatus.EXAMINED ||
-                            status == ReportStatus.SAMPLE_SENT ||
-                            status == ReportStatus.CONFIRMED ||
-                            status == ReportStatus.RESOLVED
-                        val isResolved = status == ReportStatus.RESOLVED
-                        MyReportItem(report = report, animal = animal, vetVisited = vetVisited, isResolved = isResolved)
-                    }
-            }.onSuccess { items ->
-                _uiState.update { it.copy(isLoading = false, items = items) }
+            runCatching { loadItems() }.onSuccess { items ->
+                _uiState.update { it.copy(isLoading = false, items = items, error = null) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message ?: "Failed to load reports")
                 }
             }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { loadItems() }.onSuccess { items ->
+                    _uiState.update { it.copy(isLoading = false, items = items) }
+                }
+            }
         }
+    }
+
+    private suspend fun loadItems(): List<MyReportItem> {
+        val animalsById = animalRepository.getAll().associateBy { it.id }
+        return reportRepository.getByFarmer(farmerId)
+            .sortedByDescending { it.createdAt }
+            .map { report ->
+                val animal = animalsById[report.animalId]
+                val status = report.status
+                val vetVisited = status == ReportStatus.EXAMINED ||
+                    status == ReportStatus.SAMPLE_SENT ||
+                    status == ReportStatus.CONFIRMED ||
+                    status == ReportStatus.RESOLVED
+                val isResolved = status == ReportStatus.RESOLVED
+                MyReportItem(report = report, animal = animal, vetVisited = vetVisited, isResolved = isResolved)
+            }
     }
 }

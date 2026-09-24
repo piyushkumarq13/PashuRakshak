@@ -81,7 +81,7 @@ class ReportSickAnimalViewModel(
 
     private fun loadAnimals() {
         viewModelScope.launch {
-            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+            // Local-first, then refresh from the backend in the background.
             runCatching {
                 animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
             }.onSuccess { animals ->
@@ -89,6 +89,15 @@ class ReportSickAnimalViewModel(
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoadingAnimals = false, error = error.message ?: "Failed to load animals")
+                }
+            }
+
+            launch {
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching {
+                    animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
+                }.onSuccess { animals ->
+                    _uiState.update { it.copy(isLoadingAnimals = false, animals = animals) }
                 }
             }
         }
