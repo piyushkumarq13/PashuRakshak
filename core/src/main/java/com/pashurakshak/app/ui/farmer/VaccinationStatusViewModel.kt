@@ -22,6 +22,7 @@ data class VaccinationListItem(
 data class VaccinationStatusUiState(
     val isLoading: Boolean = true,
     val items: List<VaccinationListItem> = emptyList(),
+    val animalCount: Int = 0,
     val isSaving: Boolean = false,
     val notice: String? = null,
     val error: String? = null,
@@ -43,8 +44,8 @@ class VaccinationStatusViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            runCatching { loadItems() }.onSuccess { items ->
-                _uiState.update { it.copy(isLoading = false, items = items, error = null) }
+            runCatching { loadItems() }.onSuccess { (items, animalCount) ->
+                _uiState.update { it.copy(isLoading = false, items = items, animalCount = animalCount, error = null) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message ?: "Failed to load vaccinations")
@@ -53,16 +54,16 @@ class VaccinationStatusViewModel(
 
             launch {
                 runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
-                runCatching { loadItems() }.onSuccess { items ->
-                    _uiState.update { it.copy(isLoading = false, items = items) }
+                runCatching { loadItems() }.onSuccess { (items, animalCount) ->
+                    _uiState.update { it.copy(isLoading = false, items = items, animalCount = animalCount) }
                 }
             }
         }
     }
 
-    private suspend fun loadItems(): List<VaccinationListItem> {
+    private suspend fun loadItems(): Pair<List<VaccinationListItem>, Int> {
         val animals = animalRepository.getAll().filter { it.ownerFarmerId == farmerId }
-        return animals.flatMap { animal ->
+        val items = animals.flatMap { animal ->
             val vaccinations = vaccinationRepository.getByAnimal(animal.id)
             vaccinations.map { vaccination ->
                 VaccinationListItem(
@@ -71,6 +72,7 @@ class VaccinationStatusViewModel(
                 )
             }
         }
+        return Pair(items, animals.size)
     }
 
     fun addVaccination(animalId: String, vaccineName: String, dateGiven: Long, nextDue: Long) {

@@ -123,7 +123,7 @@ fun VaccinationStatusScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            if (state.items.isNotEmpty()) {
+            if (state.animalCount > 0) {
                 FloatingActionButton(
                     onClick = { showAddDialog = true },
                     containerColor = MaterialTheme.colorScheme.primary,
