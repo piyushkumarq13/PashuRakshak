@@ -179,16 +179,9 @@ fun AppNavHost(
             }
             composable(Screen.ReportSickAnimal.route) {
                 ReportSickAnimalScreen(
-                    onSubmitted = { aiAdvisory, reportId ->
-                        if (aiAdvisory != null && reportId != null) {
-                            navController.navigate(Screen.AiInsight.withReportId(reportId, aiAdvisory)) {
-                                popUpTo(Screen.Login.route) { inclusive = true }
-                            }
-                        } else {
-                            navController.popBackStack()
-                        }
-                    },
+                    onSubmitted = { _, _ -> },
                     bottomBar = { FarmerBottomBar(navController) },
+                    navController = navController,
                 )
             }
             composable(Screen.VaccinationStatus.route) {

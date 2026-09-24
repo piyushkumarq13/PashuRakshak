@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -40,6 +41,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.navigation.NavController
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,12 +57,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.rememberNavController
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.navigation.Screen
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.FadeInContent
 import com.pashurakshak.app.ui.components.FieldLabel
@@ -75,6 +79,7 @@ fun ReportSickAnimalScreen(
     onSubmitted: (String?, String?) -> Unit,
     bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
+    navController: NavController = rememberNavController(),
     viewModel: ReportSickAnimalViewModel = viewModel {
         ReportSickAnimalViewModel(
             animalRepository = ServiceLocator.animalRepository,
@@ -92,6 +97,7 @@ fun ReportSickAnimalScreen(
     var animalPickerExpanded by remember { mutableStateOf(false) }
     var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
     var cameraAttempt by remember { mutableIntStateOf(0) }
+    var showAiDialog by remember { mutableStateOf(false) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
@@ -128,11 +134,9 @@ fun ReportSickAnimalScreen(
 
     LaunchedEffect(state.submitted) {
         if (state.submitted) {
-            onSubmitted(state.aiAdvisory, state.lastReportId)
-            viewModel.resetAfterSubmit()
+            showAiDialog = true
         }
     }
-
     LaunchedEffect(state.error) {
         state.error?.let { error ->
             snackbarHostState.showSnackbar(error)
@@ -150,9 +154,9 @@ fun ReportSickAnimalScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AppSpacing.Screen)
-                .padding(bottom = AppSpacing.ListBottom),
+                .padding(horizontal = AppSpacing.Screen, vertical = AppSpacing.Card)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Column {
@@ -391,6 +395,35 @@ fun ReportSickAnimalScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+
+    if (showAiDialog) {
+        val reportId = state.lastReportId
+        val advisory = state.aiAdvisory
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("AI Insight Ready", style = MaterialTheme.typography.titleMedium) },
+            text = { Text("Your report has been submitted successfully! Would you like to generate an AI health insight about your animal?", style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAiDialog = false
+                    if (reportId != null) {
+                        navController.navigate(Screen.AiInsight.withReportId(reportId, advisory ?: ""))
+                    }
+                    viewModel.resetAfterSubmit()
+                }) {
+                    Text("Generate", style = MaterialTheme.typography.titleMedium)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAiDialog = false
+                    viewModel.resetAfterSubmit()
+                }) {
+                    Text("Close", style = MaterialTheme.typography.titleMedium)
+                }
+            },
+        )
     }
 }
 
