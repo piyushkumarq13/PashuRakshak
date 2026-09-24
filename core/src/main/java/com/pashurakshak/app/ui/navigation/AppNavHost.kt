@@ -1,7 +1,11 @@
 package com.pashurakshak.app.ui.navigation
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -74,12 +78,18 @@ fun AppNavHost(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+    ) {
         SyncStatusBanner()
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .consumeWindowInsets(WindowInsets.statusBars),
         ) {
             // Auth: login / register / forgot-PIN
             composable(Screen.Login.route) {

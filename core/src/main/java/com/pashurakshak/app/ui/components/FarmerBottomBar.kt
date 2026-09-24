@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Warning
@@ -55,12 +54,6 @@ fun FarmerBottomBar(navController: NavHostController) {
             icon = { Icon(Icons.Default.Receipt, contentDescription = null) },
             label = "Reports",
         )
-        FarmerTab(
-            selected = currentRoute == Screen.Alerts.route,
-            onClick = { navController.navigateToFarmerTab(Screen.Alerts.route) },
-            icon = { Icon(Icons.Default.Notifications, contentDescription = null) },
-            label = "Alerts",
-        )
     }
 }
 
@@ -93,9 +86,13 @@ private fun RowScope.FarmerTab(
 }
 
 private fun NavHostController.navigateToFarmerTab(route: String) {
+    if (currentBackStackEntry?.destination?.route == route) return
     navigate(route) {
-        popUpTo(Screen.FarmerHome.route) { saveState = true }
+        popUpTo(Screen.FarmerHome.route) {
+            saveState = true
+            inclusive = false
+        }
         launchSingleTop = true
-        restoreState = true
+        restoreState = route != Screen.FarmerHome.route
     }
 }

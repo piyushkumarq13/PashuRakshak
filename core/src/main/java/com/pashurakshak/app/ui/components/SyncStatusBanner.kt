@@ -3,7 +3,6 @@ package com.pashurakshak.app.ui.components
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -18,9 +17,9 @@ import com.pashurakshak.app.data.sync.SyncStatusHolder
 import kotlinx.coroutines.delay
 
 /**
- * Thin status banner: "X reports pending sync" / "Syncing…" / "All synced".
- * Sits above the NavHost so it's visible on every screen; re-checks the local
- * queue every 30s (cheap indexed local query — no network).
+ * Thin status banner: "X reports pending sync" / "Syncing…".
+ * Hidden when fully synced so it never wastes vertical space.
+ * Sits above the NavHost; re-checks the local queue every 30s.
  */
 @Composable
 fun SyncStatusBanner(
@@ -36,22 +35,21 @@ fun SyncStatusBanner(
         }
     }
 
-    val (label, containerColor, contentColor) = when {
-        status.isSyncing -> Triple(
-            "Syncing…",
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.onSecondaryContainer,
-        )
-        status.pendingCount > 0 -> Triple(
-            "${status.pendingCount} report${if (status.pendingCount == 1) "" else "s"} pending sync",
-            MaterialTheme.colorScheme.tertiaryContainer,
-            MaterialTheme.colorScheme.onTertiaryContainer,
-        )
-        else -> Triple(
-            "All synced",
-            MaterialTheme.colorScheme.surfaceVariant,
-            MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    val label = when {
+        status.isSyncing -> "Syncing…"
+        status.pendingCount > 0 ->
+            "${status.pendingCount} report${if (status.pendingCount == 1) "" else "s"} pending sync"
+        else -> return
+    }
+    val containerColor = if (status.isSyncing) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.tertiaryContainer
+    }
+    val contentColor = if (status.isSyncing) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onTertiaryContainer
     }
 
     Surface(
@@ -62,7 +60,6 @@ fun SyncStatusBanner(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
