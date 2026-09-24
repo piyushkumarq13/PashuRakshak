@@ -1,6 +1,7 @@
 package com.pashurakshak.app.ui.farmer
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -29,6 +31,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -53,6 +56,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.data.local.Animal
+import com.pashurakshak.app.data.local.Vaccination
 import com.pashurakshak.app.ui.components.AccentDot
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
@@ -93,6 +98,8 @@ fun VaccinationStatusScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var showEditDialog by rememberSaveable { mutableStateOf<AnimalVaccinationStatus?>(null) }
+    var deleteConfirmPair by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.notice) {
@@ -155,11 +162,37 @@ fun VaccinationStatusScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.animal.id }) { item ->
-                            VaccinationCard(item = item)
+                            VaccinationCard(
+                                item = item,
+                                onEdit = { showEditDialog = item },
+                                onDelete = {
+                                    if (item.vaccinations.isNotEmpty()) {
+                                        deleteConfirmPair = item.animal.id to item.vaccinations.first().id
+                                    }
+                                },
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+
+    if (showEditDialog != null) {
+        val initial = showEditDialog!!.vaccinations.firstOrNull()
+        if (initial != null) {
+            AddVaccinationDialog(
+                animals = state.items.map { it.animal },
+                initialVaccination = initial,
+                isSaving = state.isSaving,
+                onDismiss = { showEditDialog = null },
+                onConfirm = { animalId, vaccineName, dateGiven, nextDue ->
+                    viewModel.editVaccination(initial.copy(
+                        animalId = animalId, vaccineName = vaccineName, dateGiven = dateGiven, nextDue = nextDue,
+                    ))
+                    showEditDialog = null
+                },
+            )
         }
     }
 
@@ -173,27 +206,52 @@ fun VaccinationStatusScreen(
             },
         )
     }
+
+    deleteConfirmPair?.let { (animalId, vaccId) ->
+        AlertDialog(
+            onDismissRequest = { deleteConfirmPair = null },
+            title = { Text("Delete vaccination") },
+            text = { Text("Are you sure you want to delete this vaccination record?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteVaccination(vaccId)
+                        deleteConfirmPair = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteConfirmPair = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddVaccinationDialog(
-    animals: List<com.pashurakshak.app.data.local.Animal>,
+    animals: List<Animal>,
+    initialVaccination: Vaccination? = null,
     isSaving: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (animalId: String, vaccineName: String, dateGiven: Long, nextDue: Long) -> Unit,
 ) {
-    var selectedAnimalId by remember { mutableStateOf<String?>(null) }
-    var vaccineName by remember { mutableStateOf("") }
-    var dateGiven by remember { mutableStateOf<Long?>(null) }
-    var nextDue by remember { mutableStateOf<Long?>(null) }
+    var selectedAnimalId by remember { mutableStateOf<String?>(initialVaccination?.animalId) }
+    var vaccineName by remember { mutableStateOf(initialVaccination?.vaccineName ?: "") }
+    var dateGiven by remember { mutableStateOf<Long?>(initialVaccination?.dateGiven) }
+    var nextDue by remember { mutableStateOf<Long?>(initialVaccination?.nextDue) }
     var animalExpanded by remember { mutableStateOf(false) }
     var vaccineExpanded by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf<PickerTarget?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Log vaccination") },
+        title = { Text(if (initialVaccination != null) "Edit vaccination" else "Log vaccination") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ExposedDropdownMenuBox(
@@ -307,7 +365,7 @@ private fun AddVaccinationDialog(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text("Save")
+                    Text(if (initialVaccination != null) "Save" else "Add")
                 }
             }
         },
@@ -386,9 +444,15 @@ private fun defaultNextDue(dateGiven: Long): Long =
         add(Calendar.YEAR, 1)
     }.timeInMillis
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VaccinationCard(item: AnimalVaccinationStatus) {
+private fun VaccinationCard(
+    item: AnimalVaccinationStatus,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val overdue = item.isOverdue
+    var showMenu by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -420,6 +484,33 @@ private fun VaccinationCard(item: AnimalVaccinationStatus) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                Box {
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Options",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    if (showMenu) {
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit") },
+                                onClick = { showMenu = false; onEdit() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                onClick = { showMenu = false; onDelete() },
+                            )
+                        }
+                    }
                 }
                 when {
                     overdue -> StatusPill(

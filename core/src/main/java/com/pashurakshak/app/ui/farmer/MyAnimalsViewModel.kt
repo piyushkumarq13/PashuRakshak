@@ -92,6 +92,30 @@ class MyAnimalsViewModel(
         }
     }
 
+    fun deleteAnimal(id: String) {
+        viewModelScope.launch {
+            runCatching {
+                animalRepository.delete(id)
+                com.pashurakshak.app.data.sync.RemoteSync.pushAnimalDelete(id)
+            }.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(error = error.message ?: "Failed to delete animal") }
+                }
+        }
+    }
+
+    fun editAnimal(animal: Animal) {
+        viewModelScope.launch {
+            runCatching {
+                animalRepository.update(animal)
+                com.pashurakshak.app.data.sync.RemoteSync.pushAnimal(animal)
+            }.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(error = error.message ?: "Failed to update animal") }
+                }
+        }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }

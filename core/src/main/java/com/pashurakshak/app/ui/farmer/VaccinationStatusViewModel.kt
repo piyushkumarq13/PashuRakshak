@@ -115,4 +115,28 @@ class VaccinationStatusViewModel(
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
+
+    fun deleteVaccination(id: String) {
+        viewModelScope.launch {
+            runCatching {
+                vaccinationRepository.delete(id)
+                com.pashurakshak.app.data.sync.RemoteSync.pushVaccinationDelete(id)
+            }.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(error = error.message ?: "Failed to delete vaccination") }
+                }
+        }
+    }
+
+    fun editVaccination(vaccination: Vaccination) {
+        viewModelScope.launch {
+            runCatching {
+                vaccinationRepository.update(vaccination)
+                com.pashurakshak.app.data.sync.RemoteSync.pushVaccination(vaccination)
+            }.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(error = error.message ?: "Failed to update vaccination") }
+                }
+        }
+    }
 }

@@ -1,6 +1,5 @@
 package com.pashurakshak.app.ui.farmer
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,18 +17,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import com.pashurakshak.app.data.local.Animal
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -88,6 +91,8 @@ fun MyAnimalsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var showEditDialog by rememberSaveable { mutableStateOf<Animal?>(null) }
+    var deleteConfirmId by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier,
@@ -147,12 +152,27 @@ fun MyAnimalsScreen(
                             AnimalCard(
                                 item = item,
                                 onClick = { onAnimalClick(item.animal.id) },
+                                onEdit = { showEditDialog = item.animal },
+                                onDelete = { deleteConfirmId = item.animal.id },
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showEditDialog != null) {
+        EditAnimalDialog(
+            animal = showEditDialog!!,
+            onDismiss = { showEditDialog = null },
+            onConfirm = { species, name ->
+                showEditDialog?.let { animal ->
+                    viewModel.editAnimal(animal.copy(species = species, name = name.trim()))
+                }
+                showEditDialog = null
+            },
+        )
     }
 
     if (showAddDialog) {
@@ -164,6 +184,30 @@ fun MyAnimalsScreen(
             },
         )
     }
+
+    deleteConfirmId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { deleteConfirmId = null },
+            title = { Text("Delete animal") },
+            text = { Text("Are you sure you want to delete this animal? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteAnimal(id)
+                        deleteConfirmId = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteConfirmId = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -171,7 +215,11 @@ fun MyAnimalsScreen(
 private fun AnimalCard(
     item: AnimalWithStatus,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -211,6 +259,33 @@ private fun AnimalCard(
                 )
             }
             HealthBadge(status = item.healthStatus)
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Options",
+                    modifier = Modifier.size(20.dp),
+                )
+                }
+                if (showMenu) {
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Edit") },
+                            onClick = { showMenu = false; onEdit() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete") },
+                            onClick = { showMenu = false; onDelete() },
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -287,6 +362,79 @@ private fun AddAnimalDialog(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Add animal")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditAnimalDialog(
+    animal: Animal,
+    onDismiss: () -> Unit,
+    onConfirm: (species: String, name: String) -> Unit,
+) {
+    var species by remember { mutableStateOf(animal.species) }
+    var name by remember { mutableStateOf(animal.name) }
+    var speciesExpanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit animal") },
+        text = {
+            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ExposedDropdownMenuBox(
+                    expanded = speciesExpanded,
+                    onExpandedChange = { speciesExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = species,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Species") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = speciesExpanded)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = speciesExpanded,
+                        onDismissRequest = { speciesExpanded = false },
+                    ) {
+                        SPECIES_OPTIONS.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text("$option ${speciesEmoji(option)}") },
+                                onClick = {
+                                    species = option
+                                    speciesExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(species, name) },
+                enabled = species.isNotEmpty() && name.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Save")
             }
         },
         dismissButton = {

@@ -71,6 +71,27 @@ object RemoteSync {
         )
     }
 
+    suspend fun pushVaccinationDelete(id: String) = withContext(Dispatchers.IO) {
+        deleteJson("/api/v1/pashu-health/vaccinations/$id")
+    }
+
+    suspend fun pushAnimalDelete(id: String) = withContext(Dispatchers.IO) {
+        deleteJson("/api/v1/pashu-health/animals/$id")
+    }
+
+    private fun deleteJson(path: String) {
+        if (baseUrl.isBlank()) return
+        val connection = open("$baseUrl$path", "DELETE")
+        try {
+            connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+            connection.doOutput = true
+            connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
+            readJson(connection)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     suspend fun pushAlert(alert: Alert) = withContext(Dispatchers.IO) {
         postJson(
             "/api/v1/pashu-health/alerts",

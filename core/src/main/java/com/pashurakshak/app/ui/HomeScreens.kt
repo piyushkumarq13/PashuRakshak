@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -65,6 +67,24 @@ data class HomeShortcut(
     val routeKey: String,
 )
 
+private val DAILY_TIPS = listOf(
+    "Provide fresh water to all animals twice daily — dehydration reduces milk yield by up to 25%.",
+    "Check hoof health weekly — early detection of lameness prevents costly treatments later.",
+    "Keep vaccination records updated — a missed dose can leave your herd vulnerable to outbreaks.",
+    "Monitor feed quality — moldy feed can cause serious digestive issues in cattle and goats.",
+    "Isolate new animals for at least 14 days to prevent disease spread to the existing herd.",
+    "Schedule regular vet check-ups — prevention is always cheaper than treatment.",
+    "Ensure proper shelter ventilation — ammonia buildup from waste affects respiratory health.",
+    "Quarantine any animal showing signs of illness immediately — early action saves the herd.",
+    "Rotate grazing pastures seasonally — this prevents parasite buildup and allows grass recovery.",
+    "Maintain accurate weight records — sudden weight loss is often the first sign of health issues.",
+)
+
+private fun dailyTip(): String {
+    val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+    return DAILY_TIPS[dayOfYear % DAILY_TIPS.size]
+}
+
 @Composable
 fun FarmerHomeScreen(
     onOpenMyReports: () -> Unit,
@@ -72,7 +92,8 @@ fun FarmerHomeScreen(
     onOpenReport: () -> Unit,
     onOpenVaccination: () -> Unit,
     onOpenAlerts: () -> Unit,
-    onOpenProfile: () -> Unit,
+    onOpenProfile: () -> Unit = {},
+    onOpenQrScan: () -> Unit = {},
     onOpenB2Test: () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -114,7 +135,6 @@ fun FarmerHomeScreen(
                         displayName = displayName,
                         village = SessionManager.village,
                         unreadAlerts = unreadAlerts,
-                        onOpenProfile = onOpenProfile,
                         onOpenAlerts = onOpenAlerts,
                     )
                 }
@@ -165,6 +185,13 @@ fun FarmerHomeScreen(
                         SectionCard(title = "Quick actions") {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 QuickActionRow(
+                                    icon = Icons.Default.QrCodeScanner,
+                                    title = "Scan QR",
+                                    subtitle = "Identify animals by scanning",
+                                    tint = AppColors.Secondary,
+                                    onClick = onOpenQrScan,
+                                )
+                                QuickActionRow(
                                     icon = Icons.Default.Warning,
                                     title = "Report a sick animal",
                                     subtitle = "Share symptoms with a vet",
@@ -191,6 +218,13 @@ fun FarmerHomeScreen(
                                     subtitle = "QR passports & health",
                                     tint = AppColors.Primary,
                                     onClick = onOpenAnimals,
+                                )
+                                QuickActionRow(
+                                    icon = Icons.Default.School,
+                                    title = "Health tips",
+                                    subtitle = "Daily advice for your herd",
+                                    tint = AppColors.Warning,
+                                    onClick = {},
                                 )
                             }
                         }
@@ -265,6 +299,23 @@ fun FarmerHomeScreen(
                                     icon = Icons.Default.Notifications,
                                     highlight = unreadAlerts > 0,
                                 )
+                                androidx.compose.foundation.layout.Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp, bottom = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        text = "Daily health tip",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = dailyTip(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
                             }
                         }
                     }
@@ -279,7 +330,6 @@ private fun HeroHeader(
     displayName: String,
     village: String?,
     unreadAlerts: Int,
-    onOpenProfile: () -> Unit,
     onOpenAlerts: () -> Unit,
 ) {
     val greeting = when {
@@ -351,20 +401,6 @@ private fun HeroHeader(
                 Icon(
                     imageVector = Icons.Default.Notifications,
                     contentDescription = "Alerts",
-                    tint = Color.White,
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            IconButton(
-                onClick = onOpenProfile,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f)),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "Profile",
                     tint = Color.White,
                 )
             }

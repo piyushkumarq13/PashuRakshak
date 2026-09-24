@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -49,10 +49,10 @@ fun FarmerBottomBar(navController: NavHostController) {
             label = "Report",
         )
         FarmerTab(
-            selected = currentRoute == Screen.MyReports.route,
-            onClick = { navController.navigateToFarmerTab(Screen.MyReports.route) },
-            icon = { Icon(Icons.Default.Receipt, contentDescription = null) },
-            label = "Reports",
+            selected = currentRoute == Screen.Profile.route,
+            onClick = { navController.navigateToFarmerTab(Screen.Profile.route) },
+            icon = { Icon(Icons.Default.Person, contentDescription = null) },
+            label = "Profile",
         )
     }
 }

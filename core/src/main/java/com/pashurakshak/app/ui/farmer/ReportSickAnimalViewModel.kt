@@ -236,12 +236,20 @@ class ReportSickAnimalViewModel(
                         _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = aiAdvisory, lastReportId = reportId) }
                     }
                     is ReportPushApi.PushResult.Failure -> {
-                        SyncScheduler.triggerNow(ServiceLocator.context)
+                        runCatching {
+                            com.pashurakshak.app.data.sync.SyncScheduler.triggerNow(
+                                com.pashurakshak.app.di.ServiceLocator.context,
+                            )
+                        }
                         _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = null, lastReportId = reportId) }
                     }
                 }
             }.onFailure { error ->
-                SyncScheduler.triggerNow(ServiceLocator.context)
+                runCatching {
+                    com.pashurakshak.app.data.sync.SyncScheduler.triggerNow(
+                        com.pashurakshak.app.di.ServiceLocator.context,
+                    )
+                }
                 _uiState.update {
                     it.copy(isSubmitting = false, error = error.message ?: "Failed to submit report")
                 }

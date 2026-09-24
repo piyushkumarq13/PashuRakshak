@@ -154,6 +154,7 @@ fun AppNavHost(
                     onOpenVaccination = { navController.navigate(Screen.VaccinationStatus.route) },
                     onOpenAlerts = { navController.navigate(Screen.Alerts.route) },
                     onOpenProfile = { navController.navigate(Screen.Profile.route) },
+                    onOpenQrScan = { navController.navigate(Screen.MyAnimals.route) },
                     onOpenB2Test = { navController.navigate(Screen.B2UploadTest.route) },
                     bottomBar = { FarmerBottomBar(navController) },
                 )
