@@ -20,7 +20,7 @@ fun localProp(name: String, default: String = ""): String =
     (localProperties.getProperty(name) ?: default).replace("\\", "\\\\")
 
 // Default to the deployed backend so builds work even without local.properties.
-val deployedBackendUrl = "https://pashurakshak-z8lk.onrender.com"
+val deployedBackendUrl = "https://pashurakshak-ilol.onrender.com"
 // App key registered on the deployed backend for "PashuRakshak Android Phase3".
 val deployedAppKey = "7eb0b9d170d142a4098b25f3dfa58f9a24698a5797eccb1ad015c3ea6c442d5e"
 

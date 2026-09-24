@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE_URL || 'https://pashurakshak-z8lk.onrender.com'
+const BASE = import.meta.env.VITE_API_BASE_URL || 'https://pashurakshak-ilol.onrender.com'
 const APP_KEY = import.meta.env.VITE_APP_API_KEY || '3e30562f72b83d703458aa230e9c66d12147fc31ff9449a5f9c90827a10eea52'
 
 const TOKEN_KEY = 'vet_registration_token'
