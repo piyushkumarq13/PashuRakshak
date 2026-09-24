@@ -203,6 +203,118 @@ class FarmerRepository {
         }
     }
 
+    /** PUT /core/users/me — partial update of name / email / preferredLanguage. */
+    suspend fun updateUserProfile(
+        name: String,
+        email: String,
+        preferredLanguage: String,
+    ): Result = withContext(Dispatchers.IO) {
+        try {
+            val sessionToken = SessionManager.sessionToken
+                ?: return@withContext Result.Failure("Not signed in")
+            val payload = JSONObject().apply {
+                put("name", name)
+                put("email", email)
+                put("preferredLanguage", preferredLanguage)
+            }
+            val connection = URL("${BuildConfig.API_BASE_URL}/api/v1/core/users/me")
+                .openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "PUT"
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+                connection.setRequestProperty("Authorization", "Bearer $sessionToken")
+                connection.outputStream.use {
+                    it.write(payload.toString().toByteArray(Charsets.UTF_8))
+                }
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    return@withContext Result.Failure("PUT /users/me failed (HTTP $code): $body")
+                }
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                val user = JSONObject(body).optJSONObject("user")
+                Result.Success(
+                    user?.let {
+                        UserProfile(
+                            id = it.optString("id"),
+                            phone = it.optString("phone"),
+                            role = it.optString("role"),
+                            name = it.optString("name"),
+                            email = it.optString("email"),
+                            preferredLanguage = it.optString("preferred_language", preferredLanguage),
+                        )
+                    },
+                )
+            } finally {
+                connection.disconnect()
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "updateUserProfile failed: ${error.message}")
+            Result.Failure(error.message ?: "Could not update profile")
+        }
+    }
+
+    /**
+     * POST /pashu-health/farmer-profiles — server already upserts by user id,
+     * so this works for both create and edit.
+     */
+    suspend fun updateFarmerProfile(
+        animalCount: Int,
+        village: String,
+        pincode: String,
+    ): ProfileResult = withContext(Dispatchers.IO) {
+        try {
+            val sessionToken = SessionManager.sessionToken
+                ?: return@withContext ProfileResult.Failure("Not signed in")
+            val payload = JSONObject().apply {
+                put("animalCount", animalCount)
+                put("village", village)
+                put("pincode", pincode)
+            }
+            val connection = URL("${BuildConfig.API_BASE_URL}/api/v1/pashu-health/farmer-profiles")
+                .openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "POST"
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+                connection.setRequestProperty("Authorization", "Bearer $sessionToken")
+                connection.outputStream.use {
+                    it.write(payload.toString().toByteArray(Charsets.UTF_8))
+                }
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    return@withContext ProfileResult.Failure(
+                        "POST /farmer-profiles failed (HTTP $code): $body",
+                    )
+                }
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                val row = JSONObject(body).optJSONObject("profile")
+                ProfileResult.Success(
+                    row?.let {
+                        FarmerProfile(
+                            animalCount = it.optInt("animal_count", animalCount),
+                            village = it.optString("village", village),
+                            pincode = it.optString("pincode", pincode),
+                        )
+                    },
+                )
+            } finally {
+                connection.disconnect()
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "updateFarmerProfile failed: ${error.message}")
+            ProfileResult.Failure(error.message ?: "Could not update farmer profile")
+        }
+    }
+
     companion object {
         private const val TAG = "FarmerRepository"
     }

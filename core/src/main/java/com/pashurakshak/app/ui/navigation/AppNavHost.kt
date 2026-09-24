@@ -32,6 +32,7 @@ import com.pashurakshak.app.ui.farmer.MyReportsScreen
 import com.pashurakshak.app.ui.farmer.QrPassportScreen
 import com.pashurakshak.app.ui.farmer.ReportSickAnimalScreen
 import com.pashurakshak.app.ui.farmer.VaccinationStatusScreen
+import com.pashurakshak.app.ui.profile.ProfileScreen
 import com.pashurakshak.app.ui.vet.CaseDetailScreen
 import com.pashurakshak.app.ui.vet.VetCaseQueueScreen
 
@@ -138,8 +139,23 @@ fun AppNavHost(
             composable(Screen.FarmerHome.route) {
                 FarmerHomeScreen(
                     onOpenMyReports = { navController.navigate(Screen.MyReports.route) },
+                    onOpenAnimals = { navController.navigate(Screen.MyAnimals.route) },
+                    onOpenReport = { navController.navigate(Screen.ReportSickAnimal.route) },
+                    onOpenVaccination = { navController.navigate(Screen.VaccinationStatus.route) },
+                    onOpenAlerts = { navController.navigate(Screen.Alerts.route) },
+                    onOpenProfile = { navController.navigate(Screen.Profile.route) },
                     onOpenB2Test = { navController.navigate(Screen.B2UploadTest.route) },
                     bottomBar = { FarmerBottomBar(navController) },
+                )
+            }
+            composable(Screen.Profile.route) {
+                ProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onLoggedOut = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                 )
             }
             composable(Screen.MyAnimals.route) {

@@ -1,23 +1,29 @@
 package com.pashurakshak.app.ui.farmer
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -28,7 +34,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,15 +44,36 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.EmptyState
+import com.pashurakshak.app.ui.components.ErrorBanner
+import com.pashurakshak.app.ui.components.FadeInContent
+import com.pashurakshak.app.ui.components.LoadingState
+import com.pashurakshak.app.ui.components.ScreenHeader
+import com.pashurakshak.app.ui.components.StatusPill
+import com.pashurakshak.app.ui.theme.AppColors
 
 private val SPECIES_OPTIONS =
     listOf("Cow", "Buffalo", "Goat", "Sheep", "Pig", "Poultry", "Horse", "Camel")
+
+private fun speciesEmoji(species: String): String = when (species.lowercase()) {
+    "cow" -> "🐄"
+    "buffalo" -> "🐃"
+    "goat" -> "🐐"
+    "sheep" -> "🐑"
+    "pig" -> "🐖"
+    "poultry" -> "🐔"
+    "horse" -> "🐴"
+    "camel" -> "🐫"
+    else -> "🐾"
+}
 
 @Composable
 fun MyAnimalsScreen(
@@ -68,67 +94,64 @@ fun MyAnimalsScreen(
     Scaffold(
         modifier = modifier,
         bottomBar = bottomBar,
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
                 Icon(Icons.Default.Add, contentDescription = "Add animal")
             }
         },
     ) { innerPadding ->
-        Column(
+        androidx.compose.foundation.layout.Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            Text(
-                text = "My Animals",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            ScreenHeader(
+                title = "My Animals",
+                subtitle = if (state.animals.isNotEmpty()) {
+                    "${state.animals.size} registered"
+                } else {
+                    "Tap + to add your first animal"
+                },
             )
             state.error?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                ErrorBanner(
+                    message = error,
+                    onRetry = { viewModel.refresh() },
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             when {
-                state.isLoading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-
-                state.animals.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "No animals yet — add one",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                state.isLoading -> LoadingState()
+                state.animals.isEmpty() -> EmptyState(
+                    icon = Icons.Default.Pets,
+                    title = "No animals yet",
+                    message = "Add your cattle, goats, or poultry to track health and generate QR passports.",
+                    actionLabel = "Add animal",
+                    onAction = { showAddDialog = true },
+                )
 
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp),
+                        contentPadding = PaddingValues(
+                            start = AppSpacing.Screen,
+                            end = AppSpacing.Screen,
+                            top = 4.dp,
+                            bottom = AppSpacing.ListBottom,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.animals, key = { it.animal.id }) { item ->
-                            AnimalCard(
-                                item = item,
-                                onClick = { onAnimalClick(item.animal.id) },
-                            )
+                            FadeInContent {
+                                AnimalCard(
+                                    item = item,
+                                    onClick = { onAnimalClick(item.animal.id) },
+                                )
+                            }
                         }
                     }
                 }
@@ -147,34 +170,48 @@ fun MyAnimalsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AnimalCard(
     item: AnimalWithStatus,
     onClick: () -> Unit,
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = speciesEmoji(item.animal.species),
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.animal.name,
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.fillMaxWidth(),
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = item.animal.species,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "${item.animal.species} · ${item.animal.qrCodeId.takeLast(6)}",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             HealthBadge(status = item.healthStatus)
@@ -184,22 +221,12 @@ private fun AnimalCard(
 
 @Composable
 private fun HealthBadge(status: HealthStatus) {
-    // Green = healthy, orange = under observation — matches the risk color scheme.
-    val (label, color) = when (status) {
-        HealthStatus.HEALTHY -> "Healthy" to Color(0xFF2E7D32)
-        HealthStatus.UNDER_OBSERVATION -> "Under Observation" to Color(0xFFEF6C00)
+    val (label, container, content) = when (status) {
+        HealthStatus.HEALTHY -> Triple("Healthy", AppColors.SoftGreen, AppColors.Healthy)
+        HealthStatus.UNDER_OBSERVATION ->
+            Triple("Observation", AppColors.SoftAmber, AppColors.Warning)
     }
-    Surface(
-        color = color.copy(alpha = 0.15f),
-        contentColor = color,
-        shape = RoundedCornerShape(50),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
-    }
+    StatusPill(text = label, container = container, content = content)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -214,9 +241,9 @@ private fun AddAnimalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Animal") },
+        title = { Text("Add animal") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ExposedDropdownMenuBox(
                     expanded = speciesExpanded,
                     onExpandedChange = { speciesExpanded = it },
@@ -239,7 +266,7 @@ private fun AddAnimalDialog(
                     ) {
                         SPECIES_OPTIONS.forEach { option ->
                             DropdownMenuItem(
-                                text = { Text(option) },
+                                text = { Text("$option ${speciesEmoji(option)}") },
                                 onClick = {
                                     species = option
                                     speciesExpanded = false
@@ -263,7 +290,7 @@ private fun AddAnimalDialog(
                 enabled = species.isNotEmpty() && name.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Add")
+                Text("Add animal")
             }
         },
         dismissButton = {

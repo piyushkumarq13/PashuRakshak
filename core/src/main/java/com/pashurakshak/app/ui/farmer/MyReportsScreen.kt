@@ -1,23 +1,22 @@
 package com.pashurakshak.app.ui.farmer
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,16 +24,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.pashurakshak.app.data.local.ReportStatus
 import com.pashurakshak.app.di.ServiceLocator
-import com.pashurakshak.app.ui.components.ReportPhoto
+import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.EmptyState
+import com.pashurakshak.app.ui.components.ErrorBanner
+import com.pashurakshak.app.ui.components.FadeInContent
+import com.pashurakshak.app.ui.components.LoadingState
+import com.pashurakshak.app.ui.components.ScreenHeader
+import com.pashurakshak.app.ui.components.StatusPill
+import com.pashurakshak.app.ui.theme.AppColors
 import com.pashurakshak.app.ui.vet.RiskColors
 import com.pashurakshak.app.ui.vet.RiskLevel
+import com.pashurakshak.app.ui.vet.label
 import com.pashurakshak.app.ui.vet.riskLevelFor
 
 @Composable
@@ -59,59 +64,50 @@ fun MyReportsScreen(
     Scaffold(
         modifier = modifier,
         bottomBar = bottomBar,
+        containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            Text(
-                text = "My Reports",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            ScreenHeader(
+                title = "My Reports",
+                subtitle = if (state.items.isNotEmpty()) {
+                    "${state.items.size} report${if (state.items.size == 1) "" else "s"}"
+                } else {
+                    "AI risk + vet visit history"
+                },
             )
             state.error?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                ErrorBanner(
+                    message = error,
+                    onRetry = { viewModel.refresh() },
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             when {
-                state.isLoading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-
-                state.items.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "No reports yet — report a sick animal from the Report tab.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                state.isLoading -> LoadingState()
+                state.items.isEmpty() -> EmptyState(
+                    icon = Icons.AutoMirrored.Filled.ReceiptLong,
+                    title = "No reports yet",
+                    message = "Report a sick animal from the Report tab to get AI risk scoring and vet support.",
+                )
 
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp),
+                        contentPadding = PaddingValues(
+                            start = AppSpacing.Screen,
+                            end = AppSpacing.Screen,
+                            top = 4.dp,
+                            bottom = AppSpacing.ListBottom,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.report.id }) { item ->
-                            ReportCard(item = item, onReportClick = onReportClick)
+                            FadeInContent {
+                                ReportCard(item = item, onReportClick = onReportClick)
+                            }
                         }
                     }
                 }
@@ -120,6 +116,7 @@ fun MyReportsScreen(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
     val risk = riskLevelFor(item.report.riskScore)
@@ -129,63 +126,60 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
         else -> RiskColors.lowGreen
     }
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable { onReportClick(item.report.id) },
-        colors = CardDefaults.cardColors(
-            containerColor = levelColor.copy(alpha = 0.06f),
-        ),
+        onClick = { onReportClick(item.report.id) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = item.animal?.let { "${it.name} (${it.species})" }
                         ?: "Animal ${item.report.animalId.take(8)}",
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
                 )
-                Surface(
-                    color = levelColor,
-                    contentColor = Color.White,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
-                ) {
-                    Text(
-                        text = "Risk ${item.report.riskScore}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
+                StatusPill(
+                    text = risk.label().uppercase(),
+                    container = levelColor.copy(alpha = 0.14f),
+                    content = levelColor,
+                )
             }
 
-            val statusChip = when {
-                item.isResolved -> "Resolved ✔"
-                item.vetVisited -> "Vet visited (${prettifyStatus(item.report.status.dbValue)})"
-                else -> "Awaiting vet visit (${prettifyStatus(item.report.status.dbValue)})"
-            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    color = if (item.vetVisited || item.isResolved) Color(0xFF2E7D32).copy(alpha = 0.15f) else Color(0xFFEF6C00).copy(alpha = 0.15f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
-                ) {
-                    Text(
-                        text = statusChip,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
+                val statusChip = when {
+                    item.isResolved -> "Resolved"
+                    item.vetVisited -> "Vet visited · ${prettifyStatus(item.report.status.dbValue)}"
+                    else -> "Awaiting vet · ${prettifyStatus(item.report.status.dbValue)}"
                 }
+                StatusPill(
+                    text = statusChip,
+                    container = if (item.vetVisited || item.isResolved) {
+                        AppColors.SoftGreen
+                    } else {
+                        AppColors.SoftAmber
+                    },
+                    content = if (item.vetVisited || item.isResolved) {
+                        AppColors.Healthy
+                    } else {
+                        AppColors.Warning
+                    },
+                )
                 Text(
                     text = formatDateMillis(item.report.createdAt),
                     style = MaterialTheme.typography.bodySmall,
@@ -199,13 +193,18 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            ReportPhoto(
-                report = item.report,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
-            )
+            val photoLocal = item.report.photoLocalPath
+            val photoRemote = item.report.photoRemoteUrl
+            if (!photoLocal.isNullOrBlank() || !photoRemote.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                com.pashurakshak.app.ui.components.ReportPhoto(
+                    report = item.report,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .clip(MaterialTheme.shapes.small),
+                )
+            }
         }
     }
 }

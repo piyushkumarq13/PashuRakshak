@@ -1,20 +1,24 @@
 package com.pashurakshak.app.ui.farmer
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -49,6 +53,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.AccentDot
+import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.EmptyState
+import com.pashurakshak.app.ui.components.ErrorBanner
+import com.pashurakshak.app.ui.components.FadeInContent
+import com.pashurakshak.app.ui.components.LoadingState
+import com.pashurakshak.app.ui.components.ScreenHeader
+import com.pashurakshak.app.ui.components.StatusPill
+import com.pashurakshak.app.ui.theme.AppColors
 import java.util.Calendar
 import java.util.TimeZone
 
@@ -102,9 +115,14 @@ fun VaccinationStatusScreen(
         modifier = modifier,
         bottomBar = bottomBar,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             if (state.items.isNotEmpty()) {
-                FloatingActionButton(onClick = { showAddDialog = true }) {
+                FloatingActionButton(
+                    onClick = { showAddDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
                     Icon(Icons.Default.Add, contentDescription = "Log vaccination")
                 }
             }
@@ -115,45 +133,32 @@ fun VaccinationStatusScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            Text(
-                text = "Vaccination Status",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            ScreenHeader(
+                title = "Vaccination",
+                subtitle = "Doses given & upcoming due dates",
             )
             when {
-                state.isLoading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-
-                state.items.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "No animals yet. Add an animal in My Animals first.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                state.isLoading -> LoadingState()
+                state.items.isEmpty() -> EmptyState(
+                    icon = Icons.Default.Vaccines,
+                    title = "No animals yet",
+                    message = "Add an animal in My Animals first, then log vaccinations here.",
+                )
 
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp),
+                        contentPadding = PaddingValues(
+                            start = AppSpacing.Screen,
+                            end = AppSpacing.Screen,
+                            top = 4.dp,
+                            bottom = AppSpacing.ListBottom,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.items, key = { it.animal.id }) { item ->
-                            VaccinationCard(item = item)
+                            FadeInContent {
+                                VaccinationCard(item = item)
+                            }
                         }
                     }
                 }
@@ -191,7 +196,7 @@ private fun AddVaccinationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Log Vaccination") },
+        title = { Text("Log vaccination") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ExposedDropdownMenuBox(
@@ -386,56 +391,95 @@ private fun defaultNextDue(dateGiven: Long): Long =
 
 @Composable
 private fun VaccinationCard(item: AnimalVaccinationStatus) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val overdue = item.isOverdue
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = if (overdue) AppColors.SoftRed else MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = item.animal.name,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = item.animal.species,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.animal.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = item.animal.species,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                when {
+                    overdue -> StatusPill(
+                        text = "Overdue",
+                        container = AppColors.SoftRed,
+                        content = AppColors.Danger,
+                    )
+
+                    item.nextDue != null -> StatusPill(
+                        text = "Scheduled",
+                        container = AppColors.SoftGreen,
+                        content = AppColors.Healthy,
+                    )
+
+                    else -> StatusPill(
+                        text = "No doses",
+                        container = MaterialTheme.colorScheme.surfaceVariant,
+                        content = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             if (item.vaccinations.isEmpty()) {
                 Text(
-                    text = "No vaccinations yet",
+                    text = "No vaccinations yet — tap + to log a dose.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 Text(
-                    text = "Vaccination history",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "History",
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 item.vaccinations.forEach { vaccination ->
-                    Text(
-                        text = "${vaccination.vaccineName} — given ${formatDateMillis(vaccination.dateGiven)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AccentDot(color = AppColors.Primary)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "${vaccination.vaccineName} — ${formatDateMillis(vaccination.dateGiven)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
                 item.nextDue?.let { nextDue ->
-                    val overdue = item.isOverdue
-                    Text(
-                        buildString {
-                            append("Next Due: ")
-                            append(formatDateMillis(nextDue))
-                            if (overdue) append(" (overdue)")
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (overdue) {
-                            MaterialTheme.colorScheme.error
+                    StatusPill(
+                        text = if (overdue) {
+                            "Overdue · ${formatDateMillis(nextDue)}"
                         } else {
-                            MaterialTheme.colorScheme.onSurface
+                            "Next due · ${formatDateMillis(nextDue)}"
                         },
-                        fontWeight = if (overdue) FontWeight.Bold else FontWeight.Normal,
+                        container = if (overdue) AppColors.SoftRed else AppColors.SoftBlue,
+                        content = if (overdue) AppColors.Danger else AppColors.Info,
                     )
                 }
             }
