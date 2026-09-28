@@ -440,7 +440,7 @@ After a successful report save, `generateAdvisory` is called automatically:
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/pashu-health/reports/:id/chat` | Send a follow-up message; preserves full history but sends only the last 10 messages to Groq to cap token usage |
+| `POST /api/v1/pashu-health/reports/:id/chat` | Send a follow-up message; preserves full history but sends only the last 20 messages to Groq to cap token usage |
 | `GET /api/v1/pashu-health/reports/:id/chat` | Returns the FULL stored conversation history for display |
 
 Both chat endpoints require `verifyAppKey` + `verifySession`. A Groq failure (rate limit, network, missing key) never blocks the report save — `aiAdvisory` is `null` on failure.

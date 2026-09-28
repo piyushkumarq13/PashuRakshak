@@ -24,11 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
+import com.pashurakshak.app.ui.components.AppSpacing
 
-/**
- * Forgot PIN: email → OTP → new PIN. Completing this signs the user in
- * (the reset endpoints return a fresh session token).
- */
 @Composable
 fun ForgotPinScreen(
     onCompleted: (needsOnboarding: Boolean) -> Unit,
@@ -47,8 +44,8 @@ fun ForgotPinScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            .padding(horizontal = AppSpacing.Screen),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.LG, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(

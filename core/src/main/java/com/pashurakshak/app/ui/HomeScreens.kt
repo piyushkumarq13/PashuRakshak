@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -127,7 +126,7 @@ fun FarmerHomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = PaddingValues(bottom = AppSpacing.ListBottom),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
         ) {
             item {
                 FadeInContent {
@@ -146,7 +145,7 @@ fun FarmerHomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = AppSpacing.Screen),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         StatCard(
                             label = "Animals",
@@ -180,10 +179,10 @@ fun FarmerHomeScreen(
                 FadeInContent(delayMillis = 80) {
                     Column(
                         modifier = Modifier.padding(horizontal = AppSpacing.Screen),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         SectionCard(title = "Quick actions") {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.SM)) {
                                 QuickActionRow(
                                     icon = Icons.Default.QrCodeScanner,
                                     title = "Scan QR",
@@ -218,13 +217,6 @@ fun FarmerHomeScreen(
                                     subtitle = "QR passports & health",
                                     tint = AppColors.Primary,
                                     onClick = onOpenAnimals,
-                                )
-                                QuickActionRow(
-                                    icon = Icons.Default.School,
-                                    title = "Health tips",
-                                    subtitle = "Daily advice for your herd",
-                                    tint = AppColors.Warning,
-                                    onClick = {},
                                 )
                             }
                         }
@@ -263,16 +255,16 @@ fun FarmerHomeScreen(
                 FadeInContent(delayMillis = 120) {
                     Column(
                         modifier = Modifier.padding(horizontal = AppSpacing.Screen),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         Text(
                             text = "Overview",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = AppSpacing.XS),
                         )
                         SectionCard {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
                                 OverviewLine(
                                     label = "Village",
                                     value = SessionManager.village?.takeIf { it.isNotBlank() } ?: "Not set",
@@ -302,8 +294,8 @@ fun FarmerHomeScreen(
                                 androidx.compose.foundation.layout.Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 4.dp, bottom = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        .padding(top = AppSpacing.XS, bottom = AppSpacing.SM),
+                                    verticalArrangement = Arrangement.spacedBy(AppSpacing.XS),
                                 ) {
                                     Text(
                                         text = "Daily health tip",
@@ -341,7 +333,7 @@ private fun HeroHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Screen, vertical = 4.dp)
+            .padding(horizontal = AppSpacing.Screen, vertical = AppSpacing.XS)
             .clip(MaterialTheme.shapes.large)
             .background(
                 Brush.linearGradient(
@@ -352,7 +344,7 @@ private fun HeroHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(AppSpacing.LG),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -369,7 +361,7 @@ private fun HeroHeader(
                     modifier = Modifier.size(28.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(AppSpacing.MD))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = greeting,
@@ -420,7 +412,7 @@ private fun QuickActionRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(AppSpacing.MD),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -437,7 +429,7 @@ private fun QuickActionRow(
                     modifier = Modifier.size(22.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(AppSpacing.MD))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
@@ -477,7 +469,7 @@ private fun OverviewLine(
             tint = if (highlight) AppColors.Warning else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(AppSpacing.MD))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
@@ -534,7 +526,7 @@ fun VetHomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = PaddingValues(bottom = AppSpacing.ListBottom),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
         ) {
             item {
                 FadeInContent {
@@ -554,7 +546,7 @@ fun VetHomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = AppSpacing.Screen),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         StatCard(
                             label = "In queue",
@@ -588,10 +580,10 @@ fun VetHomeScreen(
                 FadeInContent(delayMillis = 80) {
                     Column(
                         modifier = Modifier.padding(horizontal = AppSpacing.Screen),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         SectionCard(title = "Quick actions") {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.SM)) {
                                 QuickActionRow(
                                     icon = Icons.Default.ContentPaste,
                                     title = "Case queue",
@@ -623,16 +615,16 @@ fun VetHomeScreen(
                 FadeInContent(delayMillis = 120) {
                     Column(
                         modifier = Modifier.padding(horizontal = AppSpacing.Screen),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         Text(
                             text = "Overview",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = AppSpacing.XS),
                         )
                         SectionCard {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
                                 OverviewLine(
                                     label = "Pending cases",
                                     value = state.pendingCount.toString(),
@@ -682,7 +674,7 @@ private fun VetHeroHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Screen, vertical = 4.dp)
+            .padding(horizontal = AppSpacing.Screen, vertical = AppSpacing.XS)
             .clip(MaterialTheme.shapes.large)
             .background(
                 Brush.linearGradient(
@@ -693,7 +685,7 @@ private fun VetHeroHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(AppSpacing.LG),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -710,7 +702,7 @@ private fun VetHeroHeader(
                     modifier = Modifier.size(28.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(AppSpacing.MD))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "$greeting · Veterinarian",
@@ -746,7 +738,7 @@ private fun VetHeroHeader(
                     tint = Color.White,
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(AppSpacing.SM))
             IconButton(
                 onClick = onOpenProfile,
                 modifier = Modifier

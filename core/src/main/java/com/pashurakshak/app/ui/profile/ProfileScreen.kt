@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -120,7 +119,7 @@ fun ProfileScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = AppSpacing.Screen),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
         ) {
             FadeInContent {
                 ProfileAvatar(name = state.name, phone = state.phone)
@@ -129,7 +128,7 @@ fun ProfileScreen(
             FadeInContent(delayMillis = 40) {
                 SectionCard(title = if (state.editing) "Edit your details" else "Account details") {
                     if (state.editing) {
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
                             OutlinedTextField(
                                 value = state.name,
                                 onValueChange = viewModel::onNameChanged,
@@ -191,7 +190,7 @@ fun ProfileScreen(
                                         onClick = { viewModel.onLanguageChanged("hi") },
                                     )
                                     Text("Hindi")
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Spacer(modifier = Modifier.width(AppSpacing.MD))
                                     RadioButton(
                                         selected = state.language == "en",
                                         onClick = { viewModel.onLanguageChanged("en") },
@@ -201,7 +200,7 @@ fun ProfileScreen(
                             }
                         }
                     } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
                             ProfileRow(label = "Name", value = state.name.ifBlank { "Not set" })
                             ProfileRow(label = "Phone", value = state.phone.ifBlank { "—" }, prefix = "+91 ")
                             ProfileRow(label = "Email", value = state.email.ifBlank { "Not set" })
@@ -223,7 +222,7 @@ fun ProfileScreen(
                 FadeInContent(delayMillis = 60) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         OutlinedButton(
                             onClick = { viewModel.cancelEditing() },
@@ -253,13 +252,13 @@ fun ProfileScreen(
                 }
             } else {
                 FadeInContent(delayMillis = 80) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.SM)) {
                         OutlinedButton(
                             onClick = { viewModel.startEditing() },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Default.Edit, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(AppSpacing.SM))
                             Text("Edit details")
                         }
                         OutlinedButton(
@@ -271,14 +270,14 @@ fun ProfileScreen(
                                 contentDescription = null,
                                 tint = AppColors.Danger,
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(AppSpacing.SM))
                             Text("Sign out", color = AppColors.Danger)
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(AppSpacing.SM))
         }
     }
 
@@ -319,7 +318,7 @@ private fun ProfileAvatar(name: String, phone: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(top = AppSpacing.SM),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -345,7 +344,7 @@ private fun ProfileAvatar(name: String, phone: String) {
                 )
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(AppSpacing.MD))
         Text(
             text = name.ifBlank { "Farmer" },
             style = MaterialTheme.typography.titleLarge,

@@ -1,6 +1,7 @@
 package com.pashurakshak.app.ui.farmer
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -156,10 +157,9 @@ fun ReportSickAnimalScreen(
                 .padding(innerPadding)
                 .padding(horizontal = AppSpacing.Screen, vertical = AppSpacing.Card)
                 .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.LG),
         ) {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Report Sick Animal",
                     style = MaterialTheme.typography.headlineSmall,
@@ -169,7 +169,7 @@ fun ReportSickAnimalScreen(
                     text = "Describe symptoms — we'll estimate risk and alert a vet.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = AppSpacing.XS),
                 )
             }
 
@@ -223,8 +223,8 @@ fun ReportSickAnimalScreen(
             FadeInContent(delayMillis = 40) {
                 SectionCard(title = "2 · Symptoms") {
                     FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.SM),
                     ) {
                         Symptom.entries.forEach { symptom ->
                             val selected = symptom in state.selectedSymptoms
@@ -264,7 +264,7 @@ fun ReportSickAnimalScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(AppSpacing.SM))
                             Text("Take photo")
                         }
                     } else {
@@ -288,7 +288,7 @@ fun ReportSickAnimalScreen(
 
             FadeInContent(delayMillis = 80) {
                 SectionCard(title = "4 · Location") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
                         OutlinedTextField(
                             value = state.villageText,
                             onValueChange = viewModel::onVillageChanged,
@@ -315,12 +315,12 @@ fun ReportSickAnimalScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Default.LocationOn, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(AppSpacing.SM))
                             Text("Use current location")
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                         ) {
                             OutlinedTextField(
                                 value = state.latitudeText,
@@ -343,7 +343,7 @@ fun ReportSickAnimalScreen(
 
             FadeInContent(delayMillis = 100) {
                 SectionCard(title = "5 · Review & submit") {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -358,7 +358,7 @@ fun ReportSickAnimalScreen(
                                 },
                                 modifier = Modifier.size(22.dp),
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(AppSpacing.SM))
                             Column {
                                 Text(
                                     text = "Estimated risk score",
@@ -393,7 +393,7 @@ fun ReportSickAnimalScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(AppSpacing.SM))
         }
     }
 
@@ -444,6 +444,7 @@ private fun launchCamera(
     }
 }
 
+@SuppressLint("MissingPermission")
 private fun fetchLocation(
     client: FusedLocationProviderClient,
     viewModel: ReportSickAnimalViewModel,

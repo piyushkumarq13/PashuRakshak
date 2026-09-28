@@ -24,11 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
+import com.pashurakshak.app.ui.components.AppSpacing
 
-/**
- * Sign-in: phone + PIN (farmer app) or phone + PIN/password (vet app).
- * Vets register on the web — approved accounts only can sign in here.
- */
 @Composable
 fun LoginScreen(
     onLoggedIn: (needsOnboarding: Boolean) -> Unit,
@@ -50,8 +47,8 @@ fun LoginScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            .padding(horizontal = AppSpacing.Screen),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.LG, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(

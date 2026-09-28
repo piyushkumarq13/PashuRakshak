@@ -4,6 +4,7 @@ import android.content.Intent
 import android.app.Activity
 import android.Manifest
 import android.content.pm.PackageManager
+import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -456,6 +457,7 @@ confirmButton = {
     }
 }
 
+@SuppressLint("MissingPermission")
 private fun fetchLocation(
     client: FusedLocationProviderClient,
     viewModel: CaseDetailViewModel,

@@ -26,7 +26,6 @@ val deployedAppKey = "7eb0b9d170d142a4098b25f3dfa58f9a24698a5797eccb1ad015c3ea6c
 
 android {
     namespace = "com.pashurakshak.app"
-
     compileSdk {
         version = release(37)
     }

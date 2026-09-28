@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.pashurakshak.app.BuildConfig
 import com.pashurakshak.app.data.SessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +18,11 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class ChatMessage(val role: String, val text: String)
+data class ChatMessage(
+    val role: String,
+    val text: String,
+    val id: String = java.util.UUID.randomUUID().toString(),
+)
 
 data class AiInsightUiState(
     val reportId: String = "",
@@ -26,6 +31,8 @@ data class AiInsightUiState(
     val inputText: String = "",
     val isLoading: Boolean = true,
     val isSending: Boolean = false,
+    val isTyping: Boolean = false,
+    val typingMessageId: String? = null,
     val error: String? = null,
 ) {
     val isOffline: Boolean get() = aiAdvisory == null && messages.isEmpty()
@@ -57,7 +64,7 @@ class AiInsightViewModel(private val reportId: String, initialAdvisory: String? 
             try {
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
+                connection.readTimeout = 120_000
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
                 connection.setRequestProperty("Authorization", "Bearer $sessionToken")
@@ -88,32 +95,66 @@ class AiInsightViewModel(private val reportId: String, initialAdvisory: String? 
 
     fun sendMessage() {
         val state = _uiState.value
-        if (state.inputText.isBlank() || state.isSending) return
-        val message = state.inputText
-        val currentMessages = state.messages
+        if (state.inputText.isBlank() || state.isSending || state.isTyping) return
+        val message = state.inputText.trim()
         viewModelScope.launch {
-            _uiState.update { it.copy(isSending = true, error = null) }
-            val response = runCatching { sendChat(message) }.getOrNull()
-            val updatedMessages = currentMessages + ChatMessage("user", message) +
-                if (response != null) {
-                    listOf(ChatMessage("assistant", response))
-                } else {
-                    listOf(
-                        ChatMessage(
-                            "assistant",
-                            "AI assistance is unavailable right now. Please try again shortly.",
-                        ),
-                    )
-                }
+            // Show the user's message immediately — never wait for the network.
             _uiState.update {
                 it.copy(
-                    isSending = false,
+                    messages = it.messages + ChatMessage("user", message),
                     inputText = "",
-                    messages = updatedMessages,
-                    error = if (response == null) "Failed to get AI response. Please try again." else null,
+                    isSending = true,
+                    error = null,
                 )
             }
+            val response = runCatching { sendChat(message) }.getOrNull()
+            revealReply(
+                reply = response?.takeIf { it.isNotBlank() } ?: UNAVAILABLE_REPLY,
+                failed = response == null,
+            )
         }
+    }
+
+    /** Reveals the assistant reply word-by-word so it looks like the AI is writing. */
+    private suspend fun revealReply(reply: String, failed: Boolean) {
+        val assistantMessage = ChatMessage("assistant", "")
+        _uiState.update {
+            it.copy(
+                isSending = false,
+                isTyping = true,
+                typingMessageId = assistantMessage.id,
+                messages = it.messages + assistantMessage,
+                error = if (failed) "Failed to get AI response. Please try again." else null,
+            )
+        }
+        var revealed = 0
+        while (revealed < reply.length) {
+            revealed = nextRevealIndex(reply, revealed)
+            val partial = reply.substring(0, revealed)
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages.map { m ->
+                        if (m.id == assistantMessage.id) m.copy(text = partial) else m
+                    },
+                )
+            }
+            delay(REVEAL_DELAY_MS)
+        }
+        _uiState.update { it.copy(isTyping = false, typingMessageId = null) }
+    }
+
+    private fun nextRevealIndex(text: String, from: Int): Int {
+        val target = (from + REVEAL_CHARS).coerceAtMost(text.length)
+        if (target >= text.length) return text.length
+        // Snap forward to the next space so words appear whole.
+        val boundary = text.indexOf(' ', startIndex = target)
+        return if (boundary > 0) (boundary + 1).coerceAtMost(text.length) else text.length
+    }
+
+    private companion object {
+        const val UNAVAILABLE_REPLY = "AI assistance is unavailable right now. Please try again shortly."
+        const val REVEAL_CHARS = 8
+        const val REVEAL_DELAY_MS = 24L
     }
 
     private suspend fun sendChat(message: String): String? = withContext(Dispatchers.IO) {
@@ -126,7 +167,7 @@ class AiInsightViewModel(private val reportId: String, initialAdvisory: String? 
             try {
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
+                connection.readTimeout = 120_000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)

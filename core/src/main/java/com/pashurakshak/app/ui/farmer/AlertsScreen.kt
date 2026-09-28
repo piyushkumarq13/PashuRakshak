@@ -14,11 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,7 +76,7 @@ fun AlertsScreen(
                 ErrorBanner(
                     message = error,
                     onRetry = { viewModel.refresh() },
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    modifier = Modifier.padding(bottom = AppSpacing.SM),
                 )
             }
             when {
@@ -94,10 +92,10 @@ fun AlertsScreen(
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
-                            top = 4.dp,
+                            top = AppSpacing.XS,
                             bottom = AppSpacing.ListBottom,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         items(state.alerts, key = { it.id }) { alert ->
                             AlertCard(
@@ -118,25 +116,24 @@ private fun AlertCard(
     alert: Alert,
     onClick: () -> Unit,
 ) {
-    Card(
+    Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = if (alert.read) {
-                MaterialTheme.colorScheme.surface
-            } else {
-                AppColors.SoftGreen
-            },
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        color = if (alert.read) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            AppColors.SoftGreen
+        },
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(AppSpacing.LG),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
         ) {
             if (!alert.read) {
                 AccentDot(color = AppColors.Primary)
@@ -154,7 +151,7 @@ private fun AlertCard(
                     text = formatDateTimeMillis(alert.createdAt),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = AppSpacing.XS),
                 )
             }
         }

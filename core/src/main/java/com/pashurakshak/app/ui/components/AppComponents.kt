@@ -49,18 +49,18 @@ import androidx.compose.ui.unit.dp
 import com.pashurakshak.app.ui.theme.AppColors
 import kotlinx.coroutines.delay
 
-/** Horizontal screen gutter used by every list/form screen. */
 object AppSpacing {
     val Screen = 16.dp
     val Card = 16.dp
     val Section = 20.dp
     val ListBottom = 96.dp
+    val XS = 4.dp
+    val SM = 8.dp
+    val MD = 12.dp
+    val LG = 16.dp
+    val XL = 24.dp
 }
 
-/**
- * Shared page header: title + optional subtitle, with optional trailing actions
- * (profile avatar, refresh, etc.).
- */
 @Composable
 fun ScreenHeader(
     title: String,
@@ -71,7 +71,7 @@ fun ScreenHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Screen, vertical = 8.dp),
+            .padding(horizontal = AppSpacing.Screen, vertical = AppSpacing.SM),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -89,7 +89,7 @@ fun ScreenHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = AppSpacing.XS),
                 )
             }
         }
@@ -97,7 +97,6 @@ fun ScreenHeader(
     }
 }
 
-/** Circular icon button used for profile / notification affordances in headers. */
 @Composable
 fun HeaderIconButton(
     imageVector: ImageVector,
@@ -143,7 +142,6 @@ fun HeaderIconButton(
     }
 }
 
-/** Soft-tinted pill badge (status, risk, count). */
 @Composable
 fun StatusPill(
     text: String,
@@ -167,9 +165,6 @@ fun StatusPill(
     }
 }
 
-/**
- * Elevated card with press-scale feedback (works like hover on phones/tablets).
- */
 @Composable
 fun InteractiveCard(
     onClick: (() -> Unit)? = null,
@@ -198,13 +193,12 @@ fun InteractiveCard(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
-        shadowElevation = 1.dp,
+        shadowElevation = 2.dp,
     ) {
         Column(content = content)
     }
 }
 
-/** Compact metric tile for dashboards. */
 @Composable
 fun StatCard(
     label: String,
@@ -230,21 +224,31 @@ fun StatCard(
     Surface(
         modifier = modifier.scale(scale).then(clickableModifier),
         shape = MaterialTheme.shapes.medium,
-        color = accent.copy(alpha = 0.12f),
+        color = accent.copy(alpha = 0.10f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 14.dp),
+                .padding(horizontal = AppSpacing.SM, vertical = AppSpacing.MD),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.XS),
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(26.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
             Text(
                 text = value,
                 style = MaterialTheme.typography.headlineSmall,
@@ -264,7 +268,6 @@ fun StatCard(
     }
 }
 
-/** Section card with an optional heading inside the content area. */
 @Composable
 fun SectionCard(
     title: String? = null,
@@ -277,7 +280,7 @@ fun SectionCard(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
-        shadowElevation = 1.dp,
+        shadowElevation = 2.dp,
     ) {
         Column(modifier = Modifier.padding(contentPadding)) {
             if (title != null) {
@@ -285,7 +288,7 @@ fun SectionCard(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 12.dp),
+                    modifier = Modifier.padding(bottom = AppSpacing.MD),
                 )
             }
             content()
@@ -293,7 +296,6 @@ fun SectionCard(
     }
 }
 
-/** Centered empty state with icon, title, and optional CTA. */
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -324,14 +326,14 @@ fun EmptyState(
                 modifier = Modifier.size(40.dp),
             )
         }
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(AppSpacing.XL))
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(AppSpacing.SM))
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
@@ -339,7 +341,7 @@ fun EmptyState(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && onAction != null) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(AppSpacing.XL))
             androidx.compose.material3.Button(onClick = onAction) {
                 Text(actionLabel)
             }
@@ -347,7 +349,6 @@ fun EmptyState(
     }
 }
 
-/** Centered loading indicator. */
 @Composable
 fun LoadingState(modifier: Modifier = Modifier) {
     Box(
@@ -360,7 +361,6 @@ fun LoadingState(modifier: Modifier = Modifier) {
     }
 }
 
-/** Inline error strip with optional retry. */
 @Composable
 fun ErrorBanner(
     message: String,
@@ -385,7 +385,7 @@ fun ErrorBanner(
                 modifier = Modifier.weight(1f),
             )
             if (onRetry != null) {
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(AppSpacing.SM))
                 Text(
                     text = "Retry",
                     style = MaterialTheme.typography.labelLarge,
@@ -400,18 +400,12 @@ fun ErrorBanner(
     }
 }
 
-/**
- * Fades content in once. Delay is applied before the enter animation so staggered
- * sections don't all animate on the same frame. Uses a short fade only (no slide)
- * to keep recomposition cheap on low-end devices.
- */
 @Composable
 fun FadeInContent(
     visible: Boolean = true,
     delayMillis: Int = 0,
     content: @Composable () -> Unit,
 ) {
-    // Start hidden when a delay is requested so the enter animation actually staggers.
     var started by remember(delayMillis) { mutableStateOf(delayMillis <= 0) }
     LaunchedEffect(visible, delayMillis) {
         if (visible && !started) {
@@ -428,7 +422,6 @@ fun FadeInContent(
     }
 }
 
-/** Consistent section label used above form groups / lists. */
 @Composable
 fun FieldLabel(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -439,7 +432,6 @@ fun FieldLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Soft colored accent bar for cards. */
 @Composable
 fun AccentDot(color: Color, modifier: Modifier = Modifier) {
     Box(

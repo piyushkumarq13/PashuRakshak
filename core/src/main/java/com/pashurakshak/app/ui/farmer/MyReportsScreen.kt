@@ -13,10 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,7 +81,7 @@ fun MyReportsScreen(
                 ErrorBanner(
                     message = error,
                     onRetry = { viewModel.refresh() },
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    modifier = Modifier.padding(bottom = AppSpacing.SM),
                 )
             }
             when {
@@ -98,10 +97,10 @@ fun MyReportsScreen(
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
-                            top = 4.dp,
+                            top = AppSpacing.XS,
                             bottom = AppSpacing.ListBottom,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         items(state.items, key = { it.report.id }) { item ->
                             ReportCard(item = item, onReportClick = onReportClick)
@@ -122,18 +121,19 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
         RiskLevel.MEDIUM -> RiskColors.mediumOrange
         else -> RiskColors.lowGreen
     }
-    Card(
+    Surface(
         onClick = { onReportClick(item.report.id) },
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(AppSpacing.LG),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.SM),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -156,7 +156,7 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.SM),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val statusChip = when {
@@ -193,7 +193,7 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit) {
             val photoLocal = item.report.photoLocalPath
             val photoRemote = item.report.photoRemoteUrl
             if (!photoLocal.isNullOrBlank() || !photoRemote.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(AppSpacing.XS))
                 com.pashurakshak.app.ui.components.ReportPhoto(
                     report = item.report,
                     modifier = Modifier

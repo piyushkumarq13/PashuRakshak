@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -25,7 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -37,6 +38,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.AppSpacing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,15 +104,17 @@ fun QrPassportScreen(
             }
 
             else -> {
-                val qrBitmap = remember(animal.qrCodeId) {
-                    runCatching {
-                        BarcodeEncoder().encodeBitmap(
-                            animal.qrCodeId,
-                            BarcodeFormat.QR_CODE,
-                            640,
-                            640,
-                        )
-                    }.getOrNull()
+                val qrResult by produceState<Result<android.graphics.Bitmap>?>(initialValue = null, animal.qrCodeId) {
+                    value = withContext(Dispatchers.Default) {
+                        runCatching {
+                            BarcodeEncoder().encodeBitmap(
+                                animal.qrCodeId,
+                                BarcodeFormat.QR_CODE,
+                                640,
+                                640,
+                            )
+                        }
+                    }
                 }
 
                 Column(
@@ -116,31 +122,41 @@ fun QrPassportScreen(
                         .fillMaxSize()
                         .padding(innerPadding)
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
+                        .padding(AppSpacing.LG),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Card(shape = RoundedCornerShape(20.dp)) {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(AppSpacing.LG),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(AppSpacing.LG),
                         ) {
                             Text(
                                 text = "Animal Passport",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (qrBitmap != null) {
-                                Image(
+                            val qrBitmap = qrResult?.getOrNull()
+                            when {
+                                qrResult == null -> Box(
+                                    modifier = Modifier.size(220.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                                qrBitmap != null -> Image(
                                     bitmap = qrBitmap.asImageBitmap(),
                                     contentDescription = "QR code for ${animal.name}",
                                     modifier = Modifier.size(220.dp),
                                     contentScale = ContentScale.Fit,
                                 )
-                            } else {
-                                Text(
+                                else -> Text(
                                     text = "Could not generate QR code",
                                     color = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.fillMaxWidth(),

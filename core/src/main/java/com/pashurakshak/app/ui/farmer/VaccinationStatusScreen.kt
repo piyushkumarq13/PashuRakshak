@@ -19,8 +19,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -38,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -55,9 +54,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
-import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.data.local.Animal
 import com.pashurakshak.app.data.local.Vaccination
+import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AccentDot
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
@@ -97,7 +96,7 @@ fun VaccinationStatusScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
-    var showEditDialog by rememberSaveable { mutableStateOf<VaccinationListItem?>(null) }
+    var editVaccinationId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteConfirmPair by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -155,16 +154,16 @@ fun VaccinationStatusScreen(
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
-                            top = 4.dp,
+                            top = AppSpacing.XS,
                             bottom = AppSpacing.ListBottom,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         items(state.items, key = { it.vaccination.id }) { item ->
                             VaccinationCard(
                                 animal = item.animal,
                                 vaccination = item.vaccination,
-                                onEdit = { showEditDialog = item },
+                                onEdit = { editVaccinationId = item.vaccination.id },
                                 onDelete = {
                                     deleteConfirmPair = item.animal.id to item.vaccination.id
                                 },
@@ -176,22 +175,20 @@ fun VaccinationStatusScreen(
         }
     }
 
-    if (showEditDialog != null) {
-        val initial = showEditDialog?.vaccination
-        if (initial != null) {
-            AddVaccinationDialog(
-                animals = state.animals,
-                initialVaccination = initial,
-                isSaving = state.isSaving,
-                onDismiss = { showEditDialog = null },
-                onConfirm = { animalId, vaccineName, dateGiven, nextDue ->
-                    viewModel.editVaccination(initial.copy(
-                        animalId = animalId, vaccineName = vaccineName, dateGiven = dateGiven, nextDue = nextDue,
-                    ))
-                    showEditDialog = null
-                },
-            )
-        }
+    val editItem = editVaccinationId?.let { id -> state.items.firstOrNull { it.vaccination.id == id } }
+    if (editItem != null) {
+        AddVaccinationDialog(
+            animals = state.animals,
+            initialVaccination = editItem.vaccination,
+            isSaving = state.isSaving,
+            onDismiss = { editVaccinationId = null },
+            onConfirm = { animalId, vaccineName, dateGiven, nextDue ->
+                viewModel.editVaccination(editItem.vaccination.copy(
+                    animalId = animalId, vaccineName = vaccineName, dateGiven = dateGiven, nextDue = nextDue,
+                ))
+                editVaccinationId = null
+            },
+        )
     }
 
     if (showAddDialog) {
@@ -216,7 +213,10 @@ fun VaccinationStatusScreen(
                         viewModel.deleteVaccination(vaccId)
                         deleteConfirmPair = null
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
                 ) {
                     Text("Delete")
                 }
@@ -251,7 +251,7 @@ private fun AddVaccinationDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialVaccination != null) "Edit vaccination" else "Log vaccination") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.LG)) {
                 ExposedDropdownMenuBox(
                     expanded = animalExpanded,
                     onExpandedChange = { animalExpanded = it },
@@ -427,7 +427,6 @@ private fun todayUtcMillis(): Long =
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 
-// DatePicker returns UTC midnight; rebuild it as local noon so the formatted day never shifts.
 private fun utcMidnightToLocalNoon(utcMillis: Long): Long {
     val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = utcMillis }
     return Calendar.getInstance().apply {
@@ -453,19 +452,18 @@ private fun VaccinationCard(
     val overdue = vaccination.nextDue != null && vaccination.nextDue < System.currentTimeMillis()
     var showMenu by remember { mutableStateOf(false) }
 
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = if (overdue) AppColors.SoftRed else MaterialTheme.colorScheme.surface,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        color = if (overdue) AppColors.SoftRed else MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(AppSpacing.LG),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.SM),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -534,7 +532,7 @@ private fun VaccinationCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AccentDot(color = AppColors.Primary)
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(AppSpacing.SM))
                 Text(
                     text = "${vaccination.vaccineName} — ${formatDateMillis(vaccination.dateGiven)}",
                     style = MaterialTheme.typography.bodyMedium,

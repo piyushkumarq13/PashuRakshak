@@ -1,6 +1,7 @@
 package com.pashurakshak.app
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
     /** Destination requested by a tapped notification ("alerts"), consumed once. */
     private val pendingDestination = mutableStateOf<String?>(null)
 
+    @SuppressLint("InvalidFragmentVersionForActivityResult")
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 

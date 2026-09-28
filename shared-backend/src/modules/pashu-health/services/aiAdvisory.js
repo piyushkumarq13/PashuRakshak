@@ -7,6 +7,13 @@ const groq = new Groq({ apiKey: env.groqApiKey });
 
 const MODEL = 'openai/gpt-oss-120b';
 
+// gpt-oss models spend output tokens on internal reasoning before the visible
+// answer — a small max_tokens budget therefore truncates the reply mid-way.
+// 16384 leaves ample room; 'low' reasoning effort keeps answers fast and puts
+// the budget into the visible text instead of hidden chain-of-thought.
+const MAX_COMPLETION_TOKENS = 16384;
+const REASONING_EFFORT = 'low';
+
 const SYSTEM_PROMPT = `You are a livestock health advisory assistant for a farming app called PashuRakshak.
 
 Your role: give general preventive and first-aid guidance only.
@@ -52,7 +59,8 @@ export async function generateAdvisory(report, farmerPreferredLanguage) {
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.7,
-      max_tokens: 500,
+      max_tokens: MAX_COMPLETION_TOKENS,
+      reasoning_effort: REASONING_EFFORT,
     });
 
     const responseText = completion.choices[0]?.message?.content ?? '';
@@ -83,7 +91,7 @@ export async function generateAdvisory(report, farmerPreferredLanguage) {
  * Continue a conversation for a report.
  * Loads (or creates) the pashu_ai_conversations row for that report,
  * appends the user message to the stored full history, but sends ONLY
- * THE LAST 10 MESSAGES plus the system prompt to Groq as context
+ * THE LAST 20 MESSAGES plus the system prompt to Groq as context
  * (to cap token usage/cost).
  * Appends the assistant reply to the FULL stored history (not just
  * the capped context), saves, returns the reply.
@@ -122,8 +130,8 @@ export async function continueConversation(reportId, farmerId, userMessage, farm
 
   let assistantReply = '';
   try {
-    // Cap context: only send the last 10 messages to Groq
-    const cappedContext = fullHistory.slice(-10);
+    // Cap context: only send the last 20 messages to Groq
+    const cappedContext = fullHistory.slice(-20);
     const messages = [
       { role: 'system', content: `${SYSTEM_PROMPT}\n\nRespond in ${language}.` },
       ...cappedContext,
@@ -133,7 +141,8 @@ export async function continueConversation(reportId, farmerId, userMessage, farm
       model: MODEL,
       messages,
       temperature: 0.7,
-      max_tokens: 500,
+      max_tokens: MAX_COMPLETION_TOKENS,
+      reasoning_effort: REASONING_EFFORT,
     });
 
     assistantReply = completion.choices[0]?.message?.content ?? '';

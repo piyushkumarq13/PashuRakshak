@@ -21,20 +21,18 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import com.pashurakshak.app.data.local.Animal
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
+import com.pashurakshak.app.data.local.Animal
 import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
@@ -90,7 +89,7 @@ fun MyAnimalsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
-    var showEditDialog by rememberSaveable { mutableStateOf<Animal?>(null) }
+    var editAnimalId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteConfirmId by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -124,7 +123,7 @@ fun MyAnimalsScreen(
                 ErrorBanner(
                     message = error,
                     onRetry = { viewModel.refresh() },
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    modifier = Modifier.padding(bottom = AppSpacing.SM),
                 )
             }
             when {
@@ -142,16 +141,16 @@ fun MyAnimalsScreen(
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
-                            top = 4.dp,
+                            top = AppSpacing.XS,
                             bottom = AppSpacing.ListBottom,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
                         items(state.animals, key = { it.animal.id }) { item ->
                             AnimalCard(
                                 item = item,
                                 onClick = { onAnimalClick(item.animal.id) },
-                                onEdit = { showEditDialog = item.animal },
+                                onEdit = { editAnimalId = item.animal.id },
                                 onDelete = { deleteConfirmId = item.animal.id },
                             )
                         }
@@ -161,15 +160,14 @@ fun MyAnimalsScreen(
         }
     }
 
-    if (showEditDialog != null) {
+    val editAnimal = editAnimalId?.let { id -> state.animals.firstOrNull { it.animal.id == id }?.animal }
+    if (editAnimal != null) {
         EditAnimalDialog(
-            animal = showEditDialog!!,
-            onDismiss = { showEditDialog = null },
+            animal = editAnimal,
+            onDismiss = { editAnimalId = null },
             onConfirm = { species, name ->
-                showEditDialog?.let { animal ->
-                    viewModel.editAnimal(animal.copy(species = species, name = name.trim()))
-                }
-                showEditDialog = null
+                viewModel.editAnimal(editAnimal.copy(species = species, name = name.trim()))
+                editAnimalId = null
             },
         )
     }
@@ -195,7 +193,10 @@ fun MyAnimalsScreen(
                         viewModel.deleteAnimal(id)
                         deleteConfirmId = null
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
                 ) {
                     Text("Delete")
                 }
@@ -219,17 +220,18 @@ private fun AnimalCard(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    Card(
+    Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(AppSpacing.LG),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -244,7 +246,7 @@ private fun AnimalCard(
                     style = MaterialTheme.typography.headlineMedium,
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(AppSpacing.MD))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.animal.name,
@@ -263,11 +265,11 @@ private fun AnimalCard(
                     onClick = { showMenu = true },
                     modifier = Modifier.size(36.dp),
                 ) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "Options",
-                    modifier = Modifier.size(20.dp),
-                )
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
                 if (showMenu) {
                     androidx.compose.material3.DropdownMenu(
@@ -313,7 +315,7 @@ private fun AddAnimalDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add animal") },
         text = {
-            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.LG)) {
                 ExposedDropdownMenuBox(
                     expanded = speciesExpanded,
                     onExpandedChange = { speciesExpanded = it },
@@ -358,7 +360,6 @@ private fun AddAnimalDialog(
             Button(
                 onClick = { onConfirm(species, name) },
                 enabled = species.isNotEmpty() && name.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Add animal")
             }
@@ -386,7 +387,7 @@ private fun EditAnimalDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit animal") },
         text = {
-            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.LG)) {
                 ExposedDropdownMenuBox(
                     expanded = speciesExpanded,
                     onExpandedChange = { speciesExpanded = it },
@@ -431,7 +432,6 @@ private fun EditAnimalDialog(
             Button(
                 onClick = { onConfirm(species, name) },
                 enabled = species.isNotEmpty() && name.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Save")
             }

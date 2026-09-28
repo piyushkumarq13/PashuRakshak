@@ -27,11 +27,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pashurakshak.app.ui.components.AppSpacing
 
-/**
- * Farmer registration: phone + email → OTP → profile + 6-digit PIN.
- * Completing this establishes a session and saves the profile to the backend.
- */
 @Composable
 fun RegisterScreen(
     onRegistered: () -> Unit,
@@ -48,9 +45,9 @@ fun RegisterScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = AppSpacing.Screen)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.LG, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -209,7 +206,7 @@ fun RegisterScreen(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.LG),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("Language:", style = MaterialTheme.typography.bodyMedium)
