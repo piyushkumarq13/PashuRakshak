@@ -3,6 +3,7 @@ import { db } from '../../../db/client.js';
 import { verifySession } from '../../../core/middleware/verifySession.js';
 import { detectClusterForReport, categorizeAndAssign } from '../services/clusterDetection.js';
 import { generateAdvisory } from '../services/aiAdvisory.js';
+import { analyzeRisk } from '../services/aiRiskScore.js';
 
 const router = Router();
 
@@ -98,6 +99,8 @@ router.post('/', verifySession, async (req, res) => {
     const village = str(body.village);
     const assignedVetId = str(body.assignedVetId) ?? str(body.assigned_vet_id);
     const vetAssessment = str(body.vetAssessment) ?? str(body.vet_assessment);
+    const qrCodeId = str(body.qrCodeId) ?? str(body.qr_code_id);
+    const diseaseDescription = str(body.diseaseDescription) ?? str(body.disease_description);
 
   try {
     // Farm animal may not exist on the server yet (app pushes animals separately).
@@ -116,28 +119,30 @@ router.post('/', verifySession, async (req, res) => {
     }
 
      await db.execute({
-       sql: `INSERT INTO pashu_symptom_reports (
-           id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
-           latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village, assigned_vet_id, vet_assessment
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           animal_id = excluded.animal_id,
-           farmer_id = excluded.farmer_id,
-           symptoms = excluded.symptoms,
-           photo_local_path = CASE
-             WHEN excluded.photo_local_path != '' THEN excluded.photo_local_path
-             ELSE pashu_symptom_reports.photo_local_path END,
-           photo_remote_url = COALESCE(excluded.photo_remote_url, pashu_symptom_reports.photo_remote_url),
-           latitude = excluded.latitude,
-           longitude = excluded.longitude,
-           risk_score = excluded.risk_score,
-           risk_breakdown = excluded.risk_breakdown,
-           status = excluded.status,
-           synced = excluded.synced,
-           created_at = excluded.created_at,
-           village = COALESCE(excluded.village, pashu_symptom_reports.village),
-            assigned_vet_id = excluded.assigned_vet_id,
-            vet_assessment = excluded.vet_assessment`,
+        sql: `INSERT INTO pashu_symptom_reports (
+            id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
+            latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village, assigned_vet_id, vet_assessment, qr_code_id, disease_description
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            animal_id = excluded.animal_id,
+            farmer_id = excluded.farmer_id,
+            symptoms = excluded.symptoms,
+            photo_local_path = CASE
+              WHEN excluded.photo_local_path != '' THEN excluded.photo_local_path
+              ELSE pashu_symptom_reports.photo_local_path END,
+            photo_remote_url = COALESCE(excluded.photo_remote_url, pashu_symptom_reports.photo_remote_url),
+            latitude = excluded.latitude,
+            longitude = excluded.longitude,
+            risk_score = excluded.risk_score,
+            risk_breakdown = excluded.risk_breakdown,
+            status = excluded.status,
+            synced = excluded.synced,
+            created_at = excluded.created_at,
+            village = COALESCE(excluded.village, pashu_symptom_reports.village),
+             assigned_vet_id = excluded.assigned_vet_id,
+             vet_assessment = excluded.vet_assessment,
+             qr_code_id = COALESCE(excluded.qr_code_id, pashu_symptom_reports.qr_code_id),
+             disease_description = COALESCE(excluded.disease_description, pashu_symptom_reports.disease_description)`,
        args: [
          id,
          animalId,
@@ -155,6 +160,8 @@ router.post('/', verifySession, async (req, res) => {
           village,
           assignedVetId,
           vetAssessment,
+          qrCodeId,
+          diseaseDescription,
         ],
      });
 
@@ -220,6 +227,37 @@ router.post('/', verifySession, async (req, res) => {
       message: error?.message ?? 'Could not save the report.',
     });
   }
+});
+
+/**
+ * POST /api/v1/pashu-health/reports/analyze-risk
+ * Body: { symptoms: string[], diseaseDescription: string|null, species: string|null }.
+ * Runs the AI disease analysis FIRST so the app can show the AI score before
+ * the farmer confirms the report (client also combines it with its own
+ * rule-based score). Returns 503 when the AI is unavailable so the app can
+ * fall back to the rule-based score.
+ */
+router.post('/analyze-risk', verifySession, async (req, res) => {
+  const body = req.body ?? {};
+  const symptoms = Array.isArray(body.symptoms) ? body.symptoms.map(String) : [];
+  const diseaseDescription = str(body.diseaseDescription) ?? str(body.disease_description);
+  const species = str(body.species);
+
+  if (symptoms.length === 0 && !diseaseDescription) {
+    return res.status(400).json({
+      error: 'invalid_body',
+      message: 'Provide at least one symptom or a disease description.',
+    });
+  }
+
+  const result = await analyzeRisk({ species, symptoms, diseaseDescription });
+  if (!result) {
+    return res.status(503).json({
+      error: 'ai_unavailable',
+      message: 'AI analysis is unavailable right now.',
+    });
+  }
+  return res.status(200).json(result);
 });
 
 /** GET /api/v1/pashu-health/reports */

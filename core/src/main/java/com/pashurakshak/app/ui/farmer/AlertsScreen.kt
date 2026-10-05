@@ -1,10 +1,11 @@
 package com.pashurakshak.app.ui.farmer
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,10 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,6 +37,7 @@ import com.pashurakshak.app.ui.components.AccentDot
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
 import com.pashurakshak.app.ui.components.ErrorBanner
+import androidx.compose.material3.Scaffold
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.theme.AppColors
@@ -42,7 +46,6 @@ import com.pashurakshak.app.ui.theme.AppColors
 fun AlertsScreen(
     recipientRole: String = "farmer",
     recipientId: String? = SessionManager.farmerId,
-    bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: AlertsViewModel = viewModel {
         AlertsViewModel(
@@ -60,7 +63,6 @@ fun AlertsScreen(
 
     Scaffold(
         modifier = modifier,
-        bottomBar = bottomBar,
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         Column(
@@ -89,6 +91,9 @@ fun AlertsScreen(
 
                 else -> {
                     LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
@@ -116,14 +121,15 @@ private fun AlertCard(
     alert: Alert,
     onClick: () -> Unit,
 ) {
+    val unread = !alert.read
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        color = if (alert.read) {
-            MaterialTheme.colorScheme.surface
-        } else {
+        color = if (unread) {
             AppColors.SoftGreen
+        } else {
+            MaterialTheme.colorScheme.surface
         },
         tonalElevation = 1.dp,
         shadowElevation = 2.dp,
@@ -135,16 +141,35 @@ private fun AlertCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
         ) {
-            if (!alert.read) {
-                AccentDot(color = AppColors.Primary)
-            } else {
-                Spacer(modifier = Modifier.size(10.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (unread) {
+                            AppColors.Primary.copy(alpha = 0.12f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = null,
+                    tint = if (unread) {
+                        AppColors.Primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(20.dp),
+                )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = alert.message,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (alert.read) FontWeight.Normal else FontWeight.SemiBold,
+                    fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
@@ -153,6 +178,9 @@ private fun AlertCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = AppSpacing.XS),
                 )
+            }
+            if (unread) {
+                AccentDot(color = AppColors.Primary)
             }
         }
     }

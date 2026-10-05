@@ -43,6 +43,14 @@ object AppColors {
     val SoftBlue = Color(0xFFE3F2FD)
     val SoftTeal = Color(0xFFE0F2F1)
 
+    // Green-tinted elevation tints (M3 surfaceContainer* roles) so dialogs,
+    // menus and pickers match the brand instead of default cold grey.
+    val ContainerLowest = Color(0xFFFFFFFF)
+    val ContainerLow = Color(0xFFF7FAF7)
+    val Container = Color(0xFFF1F5F1)
+    val ContainerHigh = Color(0xFFEBF0EB)
+    val ContainerHighest = Color(0xFFE4EAE4)
+
     val DarkBackground = Color(0xFF101410)
     val DarkSurface = Color(0xFF1A1F1A)
     val DarkSurfaceMuted = Color(0xFF242A24)
@@ -68,6 +76,11 @@ private val LightColorScheme = lightColorScheme(
     onSurface = AppColors.OnSurface,
     surfaceVariant = AppColors.SurfaceMuted,
     onSurfaceVariant = AppColors.OnSurfaceVariant,
+    surfaceContainerLowest = AppColors.ContainerLowest,
+    surfaceContainerLow = AppColors.ContainerLow,
+    surfaceContainer = AppColors.Container,
+    surfaceContainerHigh = AppColors.ContainerHigh,
+    surfaceContainerHighest = AppColors.ContainerHighest,
     outline = AppColors.Outline,
     error = AppColors.Danger,
     onError = AppColors.OnPrimary,
@@ -92,6 +105,11 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = AppColors.DarkOnSurface,
     surfaceVariant = AppColors.DarkSurfaceMuted,
     onSurfaceVariant = Color(0xFFB0B8B0),
+    surfaceContainerLowest = Color(0xFF0C0F0C),
+    surfaceContainerLow = AppColors.DarkBackground,
+    surfaceContainer = AppColors.DarkSurface,
+    surfaceContainerHigh = AppColors.DarkSurfaceMuted,
+    surfaceContainerHighest = Color(0xFF2E352E),
     outline = Color(0xFF3A423A),
     error = Color(0xFFEF9A9A),
     onError = Color(0xFF7F1D1D),
@@ -189,11 +207,11 @@ private val AppTypography = Typography(
 )
 
 private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 @Composable

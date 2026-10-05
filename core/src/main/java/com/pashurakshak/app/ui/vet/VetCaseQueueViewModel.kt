@@ -43,18 +43,10 @@ class VetCaseQueueViewModel(
     }
 
     fun markAsExamined(reportId: String) {
-        viewModelScope.launch {
-            val item = _uiState.value.items.find { it.report.id == reportId }
-            val report = item?.report ?: return@launch
-            runCatching {
-                reportRepository.update(report.copy(status = ReportStatus.EXAMINED, synced = false))
-            }.onSuccess {
-                refresh()
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(error = error.message ?: "Failed to mark as examined")
-                }
-            }
+        // Direct marking from the queue is not allowed: the vet must open the case,
+        // scan the report QR and verify it before the case can be marked examined.
+        _uiState.update {
+            it.copy(error = "Scan the report QR first before marking a case as examined.")
         }
     }
 

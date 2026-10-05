@@ -2,19 +2,16 @@ package com.pashurakshak.app.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.AppTextField
+import com.pashurakshak.app.ui.components.LanguageSelector
+import com.pashurakshak.app.ui.components.PrimaryButton
 
 @Composable
 fun RegisterScreen(
@@ -42,207 +42,165 @@ fun RegisterScreen(
         if (state.registered) onRegistered()
     }
 
+    val stepIndex = when (state.step) {
+        RegisterUiState.Step.CONTACT -> 0
+        RegisterUiState.Step.OTP -> 1
+        RegisterUiState.Step.DETAILS -> 2
+    }
+    val stepTitle = when (state.step) {
+        RegisterUiState.Step.CONTACT -> "Phone and email"
+        RegisterUiState.Step.OTP -> "Enter the code"
+        RegisterUiState.Step.DETAILS -> "Your details"
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = AppSpacing.Screen)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.LG, Alignment.CenterVertically),
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(horizontal = AppSpacing.Screen),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = "Create your account",
-            style = MaterialTheme.typography.headlineSmall,
+        Spacer(modifier = Modifier.height(48.dp))
+        AuthBranding(
+            title = "Create your account",
+            subtitle = "Step ${stepIndex + 1} of 3 — $stepTitle",
         )
+        Spacer(modifier = Modifier.height(AppSpacing.LG))
+        AuthStepIndicator(currentStep = stepIndex, totalSteps = 3)
+        Spacer(modifier = Modifier.height(AppSpacing.LG))
 
-        when (state.step) {
-            RegisterUiState.Step.CONTACT -> {
-                Text(
-                    text = "Step 1 of 3 — phone and email",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    value = state.phone,
-                    onValueChange = viewModel::onPhoneChanged,
-                    label = { Text("Phone number") },
-                    prefix = { Text("+91 ") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.email,
-                    onValueChange = viewModel::onEmailChanged,
-                    label = { Text("Email") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    supportingText = { Text("We'll send a 6-digit code here") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                state.error?.let { ErrorText(it) }
-                Button(
-                    onClick = viewModel::sendOtp,
-                    enabled = state.canSendOtp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                    } else {
+        AuthFormCard {
+            when (state.step) {
+                RegisterUiState.Step.CONTACT -> {
+                    AppTextField(
+                        value = state.phone,
+                        onValueChange = viewModel::onPhoneChanged,
+                        label = "Phone number",
+                        prefix = "+91 ",
+                        enabled = !state.isLoading,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    )
+                    AppTextField(
+                        value = state.email,
+                        onValueChange = viewModel::onEmailChanged,
+                        label = "Email",
+                        enabled = !state.isLoading,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        supportingText = "We'll send a 6-digit code here",
+                    )
+                    state.error?.let { AuthErrorText(it) }
+                    PrimaryButton(
+                        text = if (state.resendCooldown > 0) {
+                            "Resend in ${state.resendCooldown}s"
+                        } else {
+                            "Send code"
+                        },
+                        onClick = viewModel::sendOtp,
+                        enabled = state.canSendOtp,
+                        loading = state.isLoading,
+                    )
+                }
+
+                RegisterUiState.Step.OTP -> {
+                    Text(
+                        text = "Code sent to ${state.maskedEmail ?: state.email}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    AppTextField(
+                        value = state.otpCode,
+                        onValueChange = viewModel::onOtpChanged,
+                        label = "6-digit code",
+                        enabled = !state.isLoading,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    )
+                    state.error?.let { AuthErrorText(it) }
+                    PrimaryButton(
+                        text = "Verify code",
+                        onClick = viewModel::verifyOtp,
+                        enabled = state.canVerifyOtp,
+                        loading = state.isLoading,
+                    )
+                    TextButton(
+                        onClick = viewModel::backToContact,
+                        enabled = !state.isLoading,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text("Change phone or email")
+                    }
+                }
+
+                RegisterUiState.Step.DETAILS -> {
+                    AppTextField(
+                        value = state.name,
+                        onValueChange = viewModel::onNameChanged,
+                        label = "Full name",
+                        enabled = !state.isLoading,
+                    )
+                    AppTextField(
+                        value = state.pin,
+                        onValueChange = viewModel::onPinChanged,
+                        label = "Choose a 6-digit PIN",
+                        enabled = !state.isLoading,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    )
+                    AppTextField(
+                        value = state.pinConfirm,
+                        onValueChange = viewModel::onPinConfirmChanged,
+                        label = "Confirm PIN",
+                        enabled = !state.isLoading,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    )
+                    AppTextField(
+                        value = state.animalCountText,
+                        onValueChange = viewModel::onAnimalCountChanged,
+                        label = "Number of animals",
+                        enabled = !state.isLoading,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    AppTextField(
+                        value = state.village,
+                        onValueChange = viewModel::onVillageChanged,
+                        label = "Village",
+                        enabled = !state.isLoading,
+                    )
+                    AppTextField(
+                        value = state.pincode,
+                        onValueChange = viewModel::onPincodeChanged,
+                        label = "Pincode",
+                        enabled = !state.isLoading,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        supportingText = "6 digits — vets in your district see reports here",
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.SM)) {
                         Text(
-                            text = if (state.resendCooldown > 0) {
-                                "Resend in ${state.resendCooldown}s"
-                            } else {
-                                "Send code"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "Preferred language",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LanguageSelector(
+                            selected = state.language,
+                            onSelect = viewModel::onLanguageChanged,
                         )
                     }
-                }
-            }
-
-            RegisterUiState.Step.OTP -> {
-                Text(
-                    text = "Step 2 of 3 — enter the code",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "Code sent to ${state.maskedEmail ?: state.email}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                OutlinedTextField(
-                    value = state.otpCode,
-                    onValueChange = viewModel::onOtpChanged,
-                    label = { Text("6-digit code") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                state.error?.let { ErrorText(it) }
-                Button(
-                    onClick = viewModel::verifyOtp,
-                    enabled = state.canVerifyOtp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                    } else {
-                        Text("Verify code", style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-                TextButton(onClick = viewModel::backToContact, enabled = !state.isLoading) {
-                    Text("Change phone or email")
-                }
-            }
-
-            RegisterUiState.Step.DETAILS -> {
-                Text(
-                    text = "Step 3 of 3 — your details",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    value = state.name,
-                    onValueChange = viewModel::onNameChanged,
-                    label = { Text("Full name") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.pin,
-                    onValueChange = viewModel::onPinChanged,
-                    label = { Text("Choose a 6-digit PIN") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.pinConfirm,
-                    onValueChange = viewModel::onPinConfirmChanged,
-                    label = { Text("Confirm PIN") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.animalCountText,
-                    onValueChange = viewModel::onAnimalCountChanged,
-                    label = { Text("Number of animals") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.village,
-                    onValueChange = viewModel::onVillageChanged,
-                    label = { Text("Village") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.pincode,
-                    onValueChange = viewModel::onPincodeChanged,
-                    label = { Text("Pincode") },
-                    singleLine = true,
-                    enabled = !state.isLoading,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    supportingText = { Text("6 digits — vets in your district see reports here") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.LG),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Language:", style = MaterialTheme.typography.bodyMedium)
-                    RadioButton(selected = state.language == "hi", onClick = { viewModel.onLanguageChanged("hi") })
-                    Text("Hindi")
-                    RadioButton(selected = state.language == "en", onClick = { viewModel.onLanguageChanged("en") })
-                    Text("English")
-                }
-                state.error?.let { ErrorText(it) }
-                Button(
-                    onClick = viewModel::register,
-                    enabled = state.canRegister,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                    } else {
-                        Text("Create account", style = MaterialTheme.typography.titleMedium)
-                    }
+                    state.error?.let { AuthErrorText(it) }
+                    PrimaryButton(
+                        text = "Create account",
+                        onClick = viewModel::register,
+                        enabled = state.canRegister,
+                        loading = state.isLoading,
+                    )
                 }
             }
         }
 
+        Spacer(modifier = Modifier.height(AppSpacing.LG))
         TextButton(onClick = onBack, enabled = !state.isLoading) {
             Text("Back to sign in")
         }
+        Spacer(modifier = Modifier.height(AppSpacing.LG))
     }
-}
-
-@Composable
-private fun ErrorText(message: String) {
-    Text(
-        text = message,
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodyMedium,
-    )
 }

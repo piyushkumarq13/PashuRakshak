@@ -36,19 +36,21 @@ class SyncWorker(
             val photoQueue = reportRepository.getReportsPendingPhotoUpload()
             val reportsThatGotPhoto = mutableListOf<com.pashurakshak.app.data.local.SymptomReport>()
             for (report in photoQueue) {
-                when (val upload = b2UploadService.uploadReportPhoto(report)) {
+                when (b2UploadService.uploadReportPhotos(report)) {
                     is B2UploadService.UploadResult.Success -> {
-                        reportsThatGotPhoto.add(report.copy(photoRemoteUrl = upload.fileUrl))
+                        // uploadReportPhotos persisted the joined URLs; reload the row.
+                        val refreshed = reportRepository.getById(report.id)
+                        if (refreshed != null) reportsThatGotPhoto.add(refreshed)
                     }
                     is B2UploadService.UploadResult.Skipped -> {
-                        val fileExists = java.io.File(report.photoLocalPath).exists()
-                        if (!fileExists) {
+                        val allMissing = report.photoLocalPaths.all { !java.io.File(it).exists() }
+                        if (allMissing && report.photoLocalPaths.isNotEmpty()) {
                             reportRepository.update(report.copy(photoLocalPath = ""))
                         }
                         // Offline — wait for the next connected cycle.
                     }
                     is B2UploadService.UploadResult.Failure -> {
-                        Log.w(TAG, "Photo upload failed for ${report.id}: ${upload.message}")
+                        Log.w(TAG, "Photo upload failed for ${report.id}")
                         // Push the report without the photo rather than wedging the queue.
                     }
                 }

@@ -2,6 +2,7 @@ package com.pashurakshak.app.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pashurakshak.app.data.AnimalRepository
 import com.pashurakshak.app.data.FarmerRepository
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
@@ -34,6 +35,7 @@ data class ProfileUiState(
 
 class ProfileViewModel(
     private val farmerRepository: FarmerRepository = ServiceLocator.farmerRepository,
+    private val animalRepository: AnimalRepository = ServiceLocator.animalRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProfileUiState())
@@ -61,6 +63,8 @@ class ProfileViewModel(
         baseline = local
         _uiState.update { local }
 
+        loadAnimalCount()
+
         // Refresh user + farmer profile in the background; don't clobber active edits.
         viewModelScope.launch {
             var name = local.name
@@ -68,7 +72,6 @@ class ProfileViewModel(
             var language = local.language
             var village = local.village
             var pincode = local.pincode
-            var animalCount = SessionManager.animalCount
 
             when (val userResult = farmerRepository.getProfile()) {
                 is FarmerRepository.Result.Success -> {
@@ -87,7 +90,6 @@ class ProfileViewModel(
                         profileResult.profile?.let { profile ->
                             if (profile.village.isNotBlank()) village = profile.village
                             if (profile.pincode.isNotBlank()) pincode = profile.pincode
-                            animalCount = profile.animalCount
                         }
                     }
                     is FarmerRepository.ProfileResult.Failure -> Unit
@@ -95,17 +97,42 @@ class ProfileViewModel(
             }
 
             if (_uiState.value.editing) return@launch
-            val loaded = local.copy(
+            val loaded = _uiState.value.copy(
                 isLoading = false,
                 name = name,
                 email = email,
                 village = village,
                 pincode = pincode,
-                animalCountText = animalCount.toString(),
                 language = language,
             )
             baseline = loaded
             _uiState.update { loaded }
+        }
+    }
+
+    /**
+     * The animal count is derived from the farmer's animals list (same source as
+     * Home), not the manual figure saved at registration.
+     */
+    private fun loadAnimalCount() {
+        if (isVetRole) return
+        viewModelScope.launch {
+            runCatching {
+                animalRepository.getAll().count { it.ownerFarmerId == SessionManager.farmerId }
+            }.onSuccess { count ->
+                _uiState.update { it.copy(animalCountText = count.toString()) }
+                baseline = baseline.copy(animalCountText = count.toString())
+            }
+
+            // Newly added animals may only exist after the background pull.
+            runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+            runCatching {
+                animalRepository.getAll().count { it.ownerFarmerId == SessionManager.farmerId }
+            }.onSuccess { count ->
+                if (_uiState.value.editing) return@launch
+                _uiState.update { it.copy(animalCountText = count.toString()) }
+                baseline = baseline.copy(animalCountText = count.toString())
+            }
         }
     }
 
@@ -121,8 +148,6 @@ class ProfileViewModel(
     fun onEmailChanged(value: String) = _uiState.update { it.copy(email = value) }
     fun onVillageChanged(value: String) = _uiState.update { it.copy(village = value) }
     fun onPincodeChanged(value: String) = _uiState.update { it.copy(pincode = value) }
-    fun onAnimalCountChanged(value: String) =
-        _uiState.update { it.copy(animalCountText = value.filter(Char::isDigit)) }
 
     fun onLanguageChanged(value: String) = _uiState.update { it.copy(language = value) }
 

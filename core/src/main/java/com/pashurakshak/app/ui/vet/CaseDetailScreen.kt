@@ -46,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,7 +71,12 @@ import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.FadeInContent
 import com.pashurakshak.app.ui.components.LoadingState
+import com.pashurakshak.app.ui.components.AppTextField
+import com.pashurakshak.app.ui.components.PrimaryButton
 import com.pashurakshak.app.ui.components.ReportPhoto
+import com.pashurakshak.app.ui.components.SectionCard
+import com.pashurakshak.app.ui.components.StatusPill
+import com.pashurakshak.app.ui.theme.AppColors
 import com.pashurakshak.app.ui.farmer.formatDateMillis
 import com.pashurakshak.app.ui.farmer.prettifyStatus
 
@@ -136,7 +142,19 @@ fun CaseDetailScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Case Detail") },
+                title = {
+                    Column {
+                        Text(
+                            text = "Case Detail",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = "Report ${reportId.take(8)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -145,6 +163,9 @@ fun CaseDetailScreen(
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -184,41 +205,45 @@ fun CaseDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    FadeInContent {
-                        Card(
-                            shape = MaterialTheme.shapes.medium,
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(AppSpacing.Card),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                        FadeInContent {
+                            Surface(
+                                shape = MaterialTheme.shapes.medium,
+                                color = levelColor.copy(alpha = 0.08f),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 2.dp,
+                                modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
                             ) {
-                                Text(
-                                    text = "Risk score",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(AppSpacing.Card),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     Text(
-                                        text = report.riskScore.toString(),
-                                        style = MaterialTheme.typography.displaySmall,
-                                        color = levelColor,
-                                        fontWeight = FontWeight.Bold,
+                                        text = "Risk score",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    RiskBadge(level = riskLevel)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Text(
+                                            text = report.riskScore.toString(),
+                                            style = MaterialTheme.typography.displaySmall,
+                                            color = levelColor,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        RiskBadge(level = riskLevel)
+                                    }
+                                    StatusPill(
+                                        text = prettifyStatus(report.status.dbValue),
+                                        container = AppColors.SoftGreen,
+                                        content = AppColors.Healthy,
+                                    )
                                 }
-                                Text(
-                                    text = "Status: ${prettifyStatus(report.status.dbValue)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
                             }
                         }
-                    }
 
                     FadeInContent(delayMillis = 40) {
                         DetailSection(title = "Animal") {
@@ -264,9 +289,16 @@ fun CaseDetailScreen(
                     }
 
                     FadeInContent(delayMillis = 100) {
-                        DetailSection(title = "Photo") {
+                        DetailSection(
+                            title = if (report.displayPhotoCount > 1) {
+                                "Photos (${report.displayPhotoCount})"
+                            } else {
+                                "Photo"
+                            },
+                        ) {
                             ReportPhoto(
-                                report = report,
+                                remoteUrl = report.displayPhotoUrl,
+                                localPath = report.photoLocalPaths.firstOrNull().orEmpty(),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -282,7 +314,8 @@ fun CaseDetailScreen(
 
                     if (state.canMarkExamined) {
                         FadeInContent(delayMillis = 140) {
-                            Button(
+                            PrimaryButton(
+                                text = "Scan QR to Verify Visit",
                                 onClick = {
                                     val activity = context as android.app.Activity
                                     val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
@@ -291,97 +324,101 @@ fun CaseDetailScreen(
                                     barcodeLauncher.launch(intent)
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.QrCodeScanner,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(end = 8.dp),
-                                )
-                                Text("Scan QR to Verify Visit")
-                            }
-                        }
-                    }
-
-                    if (state.isQrScanned) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(50),
-                        ) {
-                            Text(
-                                text = "QR verified: ${state.scannedQrCodeId?.take(8)}...",
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                leadingIcon = Icons.Default.QrCodeScanner,
                             )
                         }
                     }
 
-                    if (state.isQrScanned) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Assessment", style = MaterialTheme.typography.titleSmall)
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                listOf("risky", "moderate", "mild").forEach { level ->
-                                    FilterChip(
-                                        selected = state.assessment == level,
-                                        onClick = { viewModel.onAssessmentSelected(level) },
-                                        label = { Text(level) },
+                    if (state.isQrScanned && state.qrVerified) {
+                        StatusPill(
+                            text = "QR verified: ${state.scannedQrCodeId?.take(8)}...",
+                            container = AppColors.SoftGreen,
+                            content = AppColors.Healthy,
+                        )
+                    }
+
+                    if (state.isQrScanned && !state.qrVerified) {
+                        StatusPill(
+                            text = "QR does not match this case",
+                            container = AppColors.SoftRed,
+                            content = AppColors.Danger,
+                        )
+                    }
+
+                    if (state.qrVerified) {
+                        SectionCard(title = "Assessment") {
+                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    listOf("risky", "moderate", "mild").forEach { level ->
+                                        FilterChip(
+                                            selected = state.assessment == level,
+                                            onClick = { viewModel.onAssessmentSelected(level) },
+                                            label = { Text(level) },
+                                        )
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = state.assessmentText,
+                                    onValueChange = viewModel::onAssessmentTextChanged,
+                                    label = { Text("Assessment notes") },
+                                    minLines = 2,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+
+                    if (state.qrVerified) {
+                        SectionCard(title = "Visit Location") {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                PrimaryButton(
+                                    text = "Get current location",
+                                    onClick = {
+                                        val fine = ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                        ) == PackageManager.PERMISSION_GRANTED
+                                        if (fine) {
+                                            fetchLocation(fusedLocationClient, viewModel)
+                                        }
+                                    },
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    AppTextField(
+                                        value = state.latitudeText,
+                                        onValueChange = viewModel::onLatitudeChanged,
+                                        label = "Latitude",
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    AppTextField(
+                                        value = state.longitudeText,
+                                        onValueChange = viewModel::onLongitudeChanged,
+                                        label = "Longitude",
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }
                         }
                     }
 
-                    if (state.isQrScanned) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            horizontalAlignment = Alignment.Start,
-                        ) {
-                            Text("Location", style = MaterialTheme.typography.titleSmall)
-                            Button(
-                                onClick = {
-                                    val fine = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (fine) {
-                                        fetchLocation(fusedLocationClient, viewModel)
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("Get current location")
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                OutlinedTextField(
-                                    value = state.latitudeText,
-                                    onValueChange = viewModel::onLatitudeChanged,
-                                    label = { Text("Latitude") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                OutlinedTextField(
-                                    value = state.longitudeText,
-                                    onValueChange = viewModel::onLongitudeChanged,
-                                    label = { Text("Longitude") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                        }
-                    }
-
                     if (state.canMarkExamined) {
-                        Button(
-                            onClick = { showFieldCheck = true },
+                        PrimaryButton(
+                            text = "Mark Examined",
+                            onClick = {
+                                if (state.qrVerified) {
+                                    showFieldCheck = true
+                                } else {
+                                    viewModel.blockUntilQrVerified()
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Mark Examined")
-                        }
+                        )
                     } else {
                         Text(
                             text = "Field check completed — status: ${prettifyStatus(report.status.dbValue)}",
@@ -391,19 +428,12 @@ fun CaseDetailScreen(
                     }
 
                     if (state.canSubmitVisit) {
-                        Button(
+                        PrimaryButton(
+                            text = "Submit Visit Verification",
                             onClick = { showVisitDialog = true },
                             modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            if (state.isSubmittingVisit) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.padding(end = 8.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                )
-                            } else {
-                                Text("Submit Visit Verification")
-                            }
-                        }
+                            loading = state.isSubmittingVisit,
+                        )
                     }
                 }
             }
@@ -479,21 +509,8 @@ private fun DetailSection(
     title: String,
     content: @Composable () -> Unit,
 ) {
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppSpacing.Card),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    SectionCard(title = title) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             content()
         }
     }
@@ -528,9 +545,11 @@ private fun WhyThisScoreCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Card(
+    Surface(
         shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier

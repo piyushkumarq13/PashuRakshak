@@ -63,7 +63,8 @@ router.post('/', verifyAppKey, verifySession, async (req, res) => {
 
     // Look up the report to get animal_id, assigned_vet_id, village, and status
     const reportResult = await db.execute({
-      sql: `SELECT p.symptoms, a.qr_code_id, a.species, p.village, p.assigned_vet_id, p.status
+      sql: `SELECT p.symptoms, a.qr_code_id AS animal_qr_code_id, p.qr_code_id AS report_qr_code_id,
+        a.species, p.village, p.assigned_vet_id, p.status
         FROM pashu_symptom_reports p
         JOIN pashu_animals a ON p.animal_id = a.id
         WHERE p.id = ?`,
@@ -85,19 +86,30 @@ router.post('/', verifyAppKey, verifySession, async (req, res) => {
       });
     }
 
-    // Compare scanned QR code to the animal's QR code
-    const animalQrCodeId = reportRow.qr_code_id;
-    const matched = scannedQrCodeId === animalQrCodeId ? 1 : 0;
+    // Compare the scanned QR to this report's own QR first; fall back to the
+    // animal's QR only for legacy rows that predate report-level QRs.
+    const expectedQrCodeId = reportRow.report_qr_code_id || reportRow.animal_qr_code_id;
+    const matched = scannedQrCodeId && expectedQrCodeId && scannedQrCodeId === expectedQrCodeId ? 1 : 0;
 
     const now = Date.now();
     const visitId = randomUUID();
 
-    // Insert visit_verifications row
+    // Insert visit_verifications row (audit trail even when it doesn't match)
     await db.execute({
       sql: `INSERT INTO pashu_visit_verifications (id, report_id, vet_id, scanned_qr_code_id, matched, latitude, longitude, verified_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [visitId, reportId, vetUserId, scannedQrCodeId, matched, latitude, longitude, now],
     });
+
+    // A QR that does not match this report must NOT confirm the visit: the vet
+    // is told to scan the correct QR instead, and the report stays untouched.
+    if (!matched) {
+      return res.status(403).json({
+        error: 'qr_mismatch',
+        matched: 0,
+        message: 'Scanned QR code does not match this report. Scan the QR shown for this report first.',
+      });
+    }
 
     // UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined'
     await db.execute({

@@ -38,7 +38,7 @@ data class AiInsightUiState(
     val isOffline: Boolean get() = aiAdvisory == null && messages.isEmpty()
 }
 
-class AiInsightViewModel(private val reportId: String, initialAdvisory: String? = null) : ViewModel() {
+class AiInsightViewModel(private val reportId: String, private val initialAdvisory: String? = null) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AiInsightUiState(reportId = reportId, aiAdvisory = initialAdvisory))
     val uiState: StateFlow<AiInsightUiState> = _uiState.asStateFlow()
@@ -50,8 +50,18 @@ class AiInsightViewModel(private val reportId: String, initialAdvisory: String? 
     private fun loadChat() {
         viewModelScope.launch {
             val messages = runCatching { fetchChat() }.getOrNull() ?: emptyList()
-            _uiState.update { it.copy(messages = messages, isLoading = false) }
+            _uiState.update { it.copy(messages = deduplicateAdvisory(it.aiAdvisory, messages), isLoading = false) }
         }
+    }
+
+    /**
+     * The backend seeds the stored history with the advisory as its first
+     * assistant message, so without this the bubble rendered from
+     * [initialAdvisory] appears twice on first open.
+     */
+    private fun deduplicateAdvisory(advisory: String?, messages: List<ChatMessage>): List<ChatMessage> {
+        val text = advisory?.trim() ?: return messages
+        return messages.filterNot { it.role == "assistant" && it.text.trim() == text }
     }
 
     private suspend fun fetchChat(): List<ChatMessage> = withContext(Dispatchers.IO) {

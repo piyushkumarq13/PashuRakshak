@@ -14,27 +14,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,11 +41,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
-import com.pashurakshak.app.data.local.Animal
 import com.pashurakshak.app.di.ServiceLocator
+import com.pashurakshak.app.ui.components.AppDialog
+import com.pashurakshak.app.ui.components.AppDropdownField
+import com.pashurakshak.app.ui.components.AppDropdownMenu
+import com.pashurakshak.app.ui.components.AppMenuItem
 import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.AppTextField
 import com.pashurakshak.app.ui.components.EmptyState
 import com.pashurakshak.app.ui.components.ErrorBanner
+import androidx.compose.material3.Scaffold
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.StatusPill
@@ -77,7 +74,6 @@ private fun speciesEmoji(species: String): String = when (species.lowercase()) {
 @Composable
 fun MyAnimalsScreen(
     onAnimalClick: (animalId: String) -> Unit = {},
-    bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: MyAnimalsViewModel = viewModel {
         MyAnimalsViewModel(
@@ -94,13 +90,13 @@ fun MyAnimalsScreen(
 
     Scaffold(
         modifier = modifier,
-        bottomBar = bottomBar,
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.padding(bottom = AppSpacing.FloatingBar),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add animal")
             }
@@ -138,6 +134,9 @@ fun MyAnimalsScreen(
 
                 else -> {
                     LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
@@ -162,8 +161,11 @@ fun MyAnimalsScreen(
 
     val editAnimal = editAnimalId?.let { id -> state.animals.firstOrNull { it.animal.id == id }?.animal }
     if (editAnimal != null) {
-        EditAnimalDialog(
-            animal = editAnimal,
+        AnimalFormDialog(
+            title = "Edit animal",
+            confirmText = "Save",
+            initialSpecies = editAnimal.species,
+            initialName = editAnimal.name,
             onDismiss = { editAnimalId = null },
             onConfirm = { species, name ->
                 viewModel.editAnimal(editAnimal.copy(species = species, name = name.trim()))
@@ -173,7 +175,11 @@ fun MyAnimalsScreen(
     }
 
     if (showAddDialog) {
-        AddAnimalDialog(
+        AnimalFormDialog(
+            title = "Add animal",
+            confirmText = "Add animal",
+            initialSpecies = "",
+            initialName = "",
             onDismiss = { showAddDialog = false },
             onConfirm = { species, name ->
                 viewModel.addAnimal(species, name)
@@ -183,34 +189,21 @@ fun MyAnimalsScreen(
     }
 
     deleteConfirmId?.let { id ->
-        AlertDialog(
+        AppDialog(
             onDismissRequest = { deleteConfirmId = null },
-            title = { Text("Delete animal") },
-            text = { Text("Are you sure you want to delete this animal? This action cannot be undone.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteAnimal(id)
-                        deleteConfirmId = null
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteConfirmId = null }) {
-                    Text("Cancel")
-                }
+            title = "Delete animal",
+            message = "Are you sure you want to delete this animal? This action cannot be undone.",
+            icon = Icons.Default.DeleteOutline,
+            danger = true,
+            confirmText = "Delete",
+            onConfirm = {
+                viewModel.deleteAnimal(id)
+                deleteConfirmId = null
             },
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AnimalCard(
     item: AnimalWithStatus,
@@ -237,7 +230,7 @@ private fun AnimalCard(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(MaterialTheme.shapes.small)
+                    .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
@@ -272,16 +265,19 @@ private fun AnimalCard(
                     )
                 }
                 if (showMenu) {
-                    androidx.compose.material3.DropdownMenu(
+                    AppDropdownMenu(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Edit") },
+                        AppMenuItem(
+                            text = "Edit",
+                            leadingIcon = Icons.Default.Edit,
                             onClick = { showMenu = false; onEdit() },
                         )
-                        DropdownMenuItem(
-                            text = { Text("Delete") },
+                        AppMenuItem(
+                            text = "Delete",
+                            leadingIcon = Icons.Default.DeleteOutline,
+                            danger = true,
                             onClick = { showMenu = false; onDelete() },
                         )
                     }
@@ -301,145 +297,38 @@ private fun HealthBadge(status: HealthStatus) {
     StatusPill(text = label, container = container, content = content)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddAnimalDialog(
+private fun AnimalFormDialog(
+    title: String,
+    confirmText: String,
+    initialSpecies: String,
+    initialName: String,
     onDismiss: () -> Unit,
     onConfirm: (species: String, name: String) -> Unit,
 ) {
-    var species by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
-    var speciesExpanded by remember { mutableStateOf(false) }
+    var species by rememberSaveable { mutableStateOf(initialSpecies) }
+    var name by rememberSaveable { mutableStateOf(initialName) }
 
-    AlertDialog(
+    AppDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add animal") },
-        text = {
-            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.LG)) {
-                ExposedDropdownMenuBox(
-                    expanded = speciesExpanded,
-                    onExpandedChange = { speciesExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = species,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Species") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = speciesExpanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = speciesExpanded,
-                        onDismissRequest = { speciesExpanded = false },
-                    ) {
-                        SPECIES_OPTIONS.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text("$option ${speciesEmoji(option)}") },
-                                onClick = {
-                                    species = option
-                                    speciesExpanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(species, name) },
-                enabled = species.isNotEmpty() && name.isNotBlank(),
-            ) {
-                Text("Add animal")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EditAnimalDialog(
-    animal: Animal,
-    onDismiss: () -> Unit,
-    onConfirm: (species: String, name: String) -> Unit,
-) {
-    var species by remember { mutableStateOf(animal.species) }
-    var name by remember { mutableStateOf(animal.name) }
-    var speciesExpanded by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit animal") },
-        text = {
-            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.LG)) {
-                ExposedDropdownMenuBox(
-                    expanded = speciesExpanded,
-                    onExpandedChange = { speciesExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = species,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Species") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = speciesExpanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = speciesExpanded,
-                        onDismissRequest = { speciesExpanded = false },
-                    ) {
-                        SPECIES_OPTIONS.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text("$option ${speciesEmoji(option)}") },
-                                onClick = {
-                                    species = option
-                                    speciesExpanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(species, name) },
-                enabled = species.isNotEmpty() && name.isNotBlank(),
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+        title = title,
+        icon = Icons.Default.Pets,
+        confirmText = confirmText,
+        onConfirm = { onConfirm(species, name) },
+        confirmEnabled = species.isNotEmpty() && name.isNotBlank(),
+        content = {
+            AppDropdownField(
+                label = "Species",
+                options = SPECIES_OPTIONS,
+                selected = species.takeIf { it.isNotEmpty() },
+                optionLabel = { "$it ${speciesEmoji(it)}" },
+                onSelect = { species = it },
+            )
+            AppTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = "Name",
+            )
         },
     )
 }

@@ -39,6 +39,7 @@ data class CaseDetailUiState(
     val error: String? = null,
     val isQrScanned: Boolean = false,
     val scannedQrCodeId: String? = null,
+    val qrVerified: Boolean = false,
     val assessment: String? = null,
     val assessmentText: String = "",
     val latitudeText: String = "",
@@ -49,7 +50,7 @@ data class CaseDetailUiState(
             (report.status == ReportStatus.REPORTED || report.status == ReportStatus.VET_ASSIGNED) &&
             !isSubmittingFieldCheck
     val canSubmitVisit: Boolean
-        get() = isQrScanned &&
+        get() = qrVerified &&
             assessment != null &&
             assessmentText.isNotBlank() &&
             latitudeText.toDoubleOrNull() != null &&
@@ -101,8 +102,23 @@ class CaseDetailViewModel(
         return report to animal
     }
 
+    /** Called when the vet tries to mark examined without a verified QR scan. */
+    fun blockUntilQrVerified() {
+        _uiState.update {
+            it.copy(error = "Scan the report QR first before submitting the details.")
+        }
+    }
+
     fun submitFieldCheck(sampleRequired: Boolean) {
         val report = _uiState.value.report ?: return
+        // A case can only be marked examined after the vet scans the report QR and
+        // it verifies against this case — no bypassing the QR check.
+        if (!_uiState.value.qrVerified) {
+            _uiState.update {
+                it.copy(error = "Scan the report QR first before submitting the details.")
+            }
+            return
+        }
         val assessmentText = _uiState.value.assessmentText
         val newStatus = if (sampleRequired) ReportStatus.SAMPLE_SENT else ReportStatus.EXAMINED
 
@@ -148,7 +164,21 @@ class CaseDetailViewModel(
     }
 
     fun onQrScanned(qrCodeId: String) {
-        _uiState.update { it.copy(isQrScanned = true, scannedQrCodeId = qrCodeId) }
+        val report = _uiState.value.report
+        // Verify against this report's own QR first; fall back to the animal's QR
+        // for cases created before reports had their own QR code.
+        val expected = report?.qrCodeId?.takeIf { it.isNotBlank() }
+            ?: _uiState.value.animal?.qrCodeId
+        val matches = expected != null && qrCodeId.trim() == expected.trim()
+        _uiState.update {
+            it.copy(
+                isQrScanned = true,
+                scannedQrCodeId = qrCodeId,
+                qrVerified = matches,
+                error = if (matches) null else "This QR code does not match this case. Scan the QR shown for this report first.",
+                notice = if (matches) "QR verified for this case" else null,
+            )
+        }
     }
 
     fun onAssessmentSelected(assessment: String) {

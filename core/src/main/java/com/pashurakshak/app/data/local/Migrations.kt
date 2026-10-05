@@ -11,6 +11,7 @@ object Migrations {
         Migration(version = 1, sql = INITIAL_SCHEMA),
         Migration(version = 2, sql = FARMERS_TABLE),
         Migration(version = 3, sql = ADD_VET_ASSESSMENT_COLUMNS),
+        Migration(version = 4, sql = ADD_QR_AND_DISEASE_COLUMNS),
     )
 
     private const val ADD_VET_ASSESSMENT_COLUMNS = """
@@ -18,6 +19,11 @@ object Migrations {
         ALTER TABLE symptom_reports ADD COLUMN ai_risk_category TEXT DEFAULT '';
         ALTER TABLE symptom_reports ADD COLUMN vet_assessment TEXT DEFAULT '';
         ALTER TABLE symptom_reports ADD COLUMN village TEXT DEFAULT '';
+    """
+
+    private const val ADD_QR_AND_DISEASE_COLUMNS = """
+        ALTER TABLE symptom_reports ADD COLUMN qr_code_id TEXT NOT NULL DEFAULT '';
+        ALTER TABLE symptom_reports ADD COLUMN disease_description TEXT NOT NULL DEFAULT '';
     """
 
     private const val FARMERS_TABLE = """

@@ -56,28 +56,59 @@ class B2UploadService(
     private var cachedDownloadToken: String? = null
     private var cachedDownloadTokenExpiryMs: Long = 0
 
-    /** Uploads one report's photo and writes the returned URL to photo_remote_url. */
-    suspend fun uploadReportPhoto(report: SymptomReport): UploadResult {
-        val localPath = report.photoLocalPath
-        if (localPath.isBlank()) return UploadResult.Skipped
-        val file = File(localPath)
-        if (!file.exists()) return UploadResult.Skipped
+    /**
+     * Uploads every report photo that has a local file but no remote URL yet and
+     * writes the URLs back into photo_remote_url (index-aligned, newline-joined).
+     */
+    suspend fun uploadReportPhotos(report: SymptomReport): UploadResult {
+        val locals = report.photoLocalPaths
+        if (locals.isEmpty()) return UploadResult.Skipped
         if (applicationKeyId.isBlank() || applicationKey.isBlank() || bucketName.isBlank()) {
             return UploadResult.Failure(
                 "B2 credentials missing — fill B2_* fields in local.properties",
             )
         }
 
-        val remoteName = "reports/${report.id}/${file.name}"
-        return when (val result = uploadFile(file, remoteName)) {
-            is UploadResult.Success -> {
-                reportRepository.update(report.copy(photoRemoteUrl = result.fileUrl))
+        val remotes = MutableList<String?>(locals.size) { report.photoRemoteUrls.getOrNull(it) }
+        var last: UploadResult? = null
+        var uploadedAny = false
+
+        for (index in locals.indices) {
+            if (!remotes[index].isNullOrBlank()) continue
+            val file = File(locals[index])
+            if (!file.exists()) {
+                last = UploadResult.Skipped
+                continue
+            }
+            val remoteName = "reports/${report.id}/${file.name}"
+            when (val result = uploadFile(file, remoteName)) {
+                is UploadResult.Success -> {
+                    remotes[index] = result.fileUrl
+                    last = result
+                    uploadedAny = true
+                }
+
+                else -> last = result
+            }
+        }
+
+        if (uploadedAny) {
+            reportRepository.update(
+                report.copy(photoRemoteUrl = remotes.joinToString(SymptomReport.NEWLINE_SEPARATOR))
+            )
+        }
+        return last ?: UploadResult.Skipped
+    }
+
+    /** Kept for the manual B2 test screen — uploads every photo of one report. */
+    suspend fun uploadReportPhoto(report: SymptomReport): UploadResult =
+        uploadReportPhotos(report).let { result ->
+            if (result is UploadResult.Skipped && report.photoLocalPaths.isNotEmpty()) {
+                UploadResult.Failure("Local photo file is missing")
+            } else {
                 result
             }
-
-            else -> result
         }
-    }
 
     /**
      * Walks the photo-upload queue (reports with a local photo and no remote URL,
@@ -87,7 +118,7 @@ class B2UploadService(
     suspend fun uploadPendingReportPhotos(): List<Pair<String, UploadResult>> {
         val pending = reportRepository.getReportsPendingPhotoUpload()
         return pending.map { report ->
-            report.id to uploadReportPhoto(report)
+            report.id to uploadReportPhotos(report)
         }
     }
 

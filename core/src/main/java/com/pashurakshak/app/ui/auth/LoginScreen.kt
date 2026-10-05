@@ -2,15 +2,15 @@ package com.pashurakshak.app.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +25,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.AppTextField
+import com.pashurakshak.app.ui.components.PrimaryButton
 
 @Composable
 fun LoginScreen(
@@ -47,63 +49,45 @@ fun LoginScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(horizontal = AppSpacing.Screen),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.LG, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = "PashuRakshak",
-            style = MaterialTheme.typography.headlineLarge,
+        Spacer(modifier = Modifier.height(56.dp))
+        AuthBranding(
+            title = "PashuRakshak",
+            subtitle = if (isVetApp) "Veterinarian sign in" else "Sign in to your account",
         )
-        Text(
-            text = if (isVetApp) "Veterinarian sign in" else "Sign in to your account",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(
-            value = state.phone,
-            onValueChange = viewModel::onPhoneChanged,
-            label = { Text("Phone number") },
-            prefix = { Text("+91 ") },
-            singleLine = true,
-            enabled = !state.isLoading,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            supportingText = { Text("e.g. 98765 43210") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.credential,
-            onValueChange = viewModel::onCredentialChanged,
-            label = { Text(if (isVetApp) "PIN or password" else "6-digit PIN") },
-            singleLine = true,
-            enabled = !state.isLoading,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        state.error?.let { error ->
-            Text(
-                text = error,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
+        Spacer(modifier = Modifier.height(AppSpacing.XL))
+        AuthFormCard {
+            AppTextField(
+                value = state.phone,
+                onValueChange = viewModel::onPhoneChanged,
+                label = "Phone number",
+                prefix = "+91 ",
+                enabled = !state.isLoading,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                supportingText = "e.g. 98765 43210",
             )
+            AppTextField(
+                value = state.credential,
+                onValueChange = viewModel::onCredentialChanged,
+                label = if (isVetApp) "PIN or password" else "6-digit PIN",
+                enabled = !state.isLoading,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            )
+            state.error?.let { AuthErrorText(it) }
         }
-        Button(
+        Spacer(modifier = Modifier.height(AppSpacing.XL))
+        PrimaryButton(
+            text = "Sign in",
             onClick = viewModel::submit,
             enabled = state.canSubmit,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-        ) {
-            if (state.isLoading) {
-                CircularProgressIndicator(
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                Text("Sign in", style = MaterialTheme.typography.titleMedium)
-            }
-        }
+            loading = state.isLoading,
+        )
+        Spacer(modifier = Modifier.height(AppSpacing.SM))
         if (!isVetApp) {
             TextButton(onClick = onGoRegister, enabled = !state.isLoading) {
                 Text("New here? Create account")
@@ -118,5 +102,6 @@ fun LoginScreen(
         TextButton(onClick = onGoForgotPin, enabled = !state.isLoading) {
             Text(if (isVetApp) "Forgot PIN or password?" else "Forgot PIN?")
         }
+        Spacer(modifier = Modifier.height(AppSpacing.LG))
     }
 }

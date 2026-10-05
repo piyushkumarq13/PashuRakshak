@@ -1,21 +1,18 @@
 package com.pashurakshak.app.ui.components
 
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -25,58 +22,41 @@ import com.pashurakshak.app.navigation.Screen
 fun VetBottomBar(navController: NavHostController) {
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
-    NavigationBar(
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)),
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp,
     ) {
-        VetTab(
-            selected = currentRoute == Screen.VetHome.route,
-            onClick = { navController.navigateToVetTab(Screen.VetHome.route) },
-            icon = { Icon(Icons.Default.Home, contentDescription = null) },
-            label = "Home",
-        )
-        VetTab(
-            selected = currentRoute == Screen.VetCaseQueue.route,
-            onClick = { navController.navigateToVetTab(Screen.VetCaseQueue.route) },
-            icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null) },
-            label = "Cases",
-        )
-        VetTab(
-            selected = currentRoute == Screen.VetAlerts.route,
-            onClick = { navController.navigateToVetTab(Screen.VetAlerts.route) },
-            icon = { Icon(Icons.Default.Notifications, contentDescription = null) },
-            label = "Alerts",
-        )
-    }
-}
-
-@Composable
-private fun RowScope.VetTab(
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: @Composable () -> Unit,
-    label: String,
-) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = icon,
-        label = {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+        ) {
+            BottomBarTab(
+                selected = currentRoute == Screen.VetHome.route,
+                onClick = { navController.navigateToVetTab(Screen.VetHome.route) },
+                icon = Icons.Default.Home,
+                label = "Home",
             )
-        },
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedTextColor = MaterialTheme.colorScheme.primary,
-        ),
-        modifier = Modifier.weight(1f),
-    )
+            BottomBarTab(
+                selected = currentRoute == Screen.VetCaseQueue.route,
+                onClick = { navController.navigateToVetTab(Screen.VetCaseQueue.route) },
+                icon = Icons.AutoMirrored.Filled.Assignment,
+                label = "Cases",
+            )
+            BottomBarTab(
+                selected = currentRoute == Screen.VetAlerts.route,
+                onClick = { navController.navigateToVetTab(Screen.VetAlerts.route) },
+                icon = Icons.Default.Notifications,
+                label = "Alerts",
+            )
+        }
+    }
 }
 
 private fun NavHostController.navigateToVetTab(route: String) {

@@ -2,12 +2,14 @@ package com.pashurakshak.app.ui.farmer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,25 +17,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Vaccines
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -49,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,9 +57,14 @@ import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.data.local.Animal
 import com.pashurakshak.app.data.local.Vaccination
 import com.pashurakshak.app.di.ServiceLocator
-import com.pashurakshak.app.ui.components.AccentDot
+import com.pashurakshak.app.ui.components.AppDialog
+import com.pashurakshak.app.ui.components.AppDropdownField
+import com.pashurakshak.app.ui.components.AppDropdownMenu
+import com.pashurakshak.app.ui.components.AppMenuItem
+import com.pashurakshak.app.ui.components.AppPickerField
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.EmptyState
+import androidx.compose.material3.Scaffold
 import com.pashurakshak.app.ui.components.LoadingState
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.StatusPill
@@ -83,7 +88,6 @@ private val VACCINE_OPTIONS = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaccinationStatusScreen(
-    bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: VaccinationStatusViewModel = viewModel {
         VaccinationStatusViewModel(
@@ -117,8 +121,9 @@ fun VaccinationStatusScreen(
 
     Scaffold(
         modifier = modifier,
-        bottomBar = bottomBar,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = AppSpacing.FloatingBar))
+        },
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             if (state.animalCount > 0) {
@@ -126,6 +131,7 @@ fun VaccinationStatusScreen(
                     onClick = { showAddDialog = true },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(bottom = AppSpacing.FloatingBar),
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Log vaccination")
                 }
@@ -151,6 +157,9 @@ fun VaccinationStatusScreen(
 
                 else -> {
                     LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         contentPadding = PaddingValues(
                             start = AppSpacing.Screen,
                             end = AppSpacing.Screen,
@@ -203,34 +212,21 @@ fun VaccinationStatusScreen(
     }
 
     deleteConfirmPair?.let { (animalId, vaccId) ->
-        AlertDialog(
+        AppDialog(
             onDismissRequest = { deleteConfirmPair = null },
-            title = { Text("Delete vaccination") },
-            text = { Text("Are you sure you want to delete this vaccination record?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteVaccination(vaccId)
-                        deleteConfirmPair = null
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteConfirmPair = null }) {
-                    Text("Cancel")
-                }
+            title = "Delete vaccination",
+            message = "Are you sure you want to delete this vaccination record?",
+            icon = Icons.Default.DeleteOutline,
+            danger = true,
+            confirmText = "Delete",
+            onConfirm = {
+                viewModel.deleteVaccination(vaccId)
+                deleteConfirmPair = null
             },
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddVaccinationDialog(
     animals: List<Animal>,
@@ -239,138 +235,65 @@ private fun AddVaccinationDialog(
     onDismiss: () -> Unit,
     onConfirm: (animalId: String, vaccineName: String, dateGiven: Long, nextDue: Long) -> Unit,
 ) {
-    var selectedAnimalId by remember { mutableStateOf<String?>(initialVaccination?.animalId) }
-    var vaccineName by remember { mutableStateOf(initialVaccination?.vaccineName ?: "") }
-    var dateGiven by remember { mutableStateOf<Long?>(initialVaccination?.dateGiven) }
-    var nextDue by remember { mutableStateOf<Long?>(initialVaccination?.nextDue) }
-    var animalExpanded by remember { mutableStateOf(false) }
-    var vaccineExpanded by remember { mutableStateOf(false) }
+    var selectedAnimalId by rememberSaveable { mutableStateOf<String?>(initialVaccination?.animalId) }
+    var vaccineName by rememberSaveable { mutableStateOf(initialVaccination?.vaccineName ?: "") }
+    var dateGiven by rememberSaveable { mutableStateOf<Long?>(initialVaccination?.dateGiven) }
+    var nextDue by rememberSaveable { mutableStateOf<Long?>(initialVaccination?.nextDue) }
     var pickerTarget by remember { mutableStateOf<PickerTarget?>(null) }
 
-    AlertDialog(
+    val isEditing = initialVaccination != null
+
+    AppDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initialVaccination != null) "Edit vaccination" else "Log vaccination") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.LG)) {
-                ExposedDropdownMenuBox(
-                    expanded = animalExpanded,
-                    onExpandedChange = { animalExpanded = it },
-                ) {
-                    val selected = animals.find { it.id == selectedAnimalId }
-                    OutlinedTextField(
-                        value = selected?.let { "${it.name} (${it.species})" } ?: "",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Animal") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = animalExpanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = animalExpanded,
-                        onDismissRequest = { animalExpanded = false },
-                    ) {
-                        animals.forEach { animal ->
-                            DropdownMenuItem(
-                                text = { Text("${animal.name} (${animal.species})") },
-                                onClick = {
-                                    selectedAnimalId = animal.id
-                                    animalExpanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-
-                ExposedDropdownMenuBox(
-                    expanded = vaccineExpanded,
-                    onExpandedChange = { vaccineExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = vaccineName,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Vaccine") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = vaccineExpanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = vaccineExpanded,
-                        onDismissRequest = { vaccineExpanded = false },
-                    ) {
-                        VACCINE_OPTIONS.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option) },
-                                onClick = {
-                                    vaccineName = option
-                                    vaccineExpanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = { pickerTarget = PickerTarget.DATE_GIVEN },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = dateGiven?.let { "Date given: ${formatDateMillis(it)}" }
-                            ?: "Select date given",
-                    )
-                }
-                OutlinedButton(
-                    onClick = {
-                        pickerTarget = PickerTarget.NEXT_DUE
-                        if (nextDue == null) {
-                            nextDue = dateGiven?.let { defaultNextDue(it) }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = nextDue?.let { "Next due: ${formatDateMillis(it)}" }
-                            ?: "Select next due",
-                    )
-                }
-            }
+        title = if (isEditing) "Edit vaccination" else "Log vaccination",
+        icon = Icons.Default.Vaccines,
+        confirmText = if (isEditing) "Save" else "Add",
+        onConfirm = {
+            val animalId = selectedAnimalId ?: return@AppDialog
+            val given = dateGiven ?: return@AppDialog
+            val due = nextDue ?: return@AppDialog
+            onConfirm(animalId, vaccineName, given, due)
         },
-        confirmButton = {
-            Button(
+        confirmEnabled = selectedAnimalId != null &&
+            vaccineName.isNotEmpty() &&
+            dateGiven != null &&
+            nextDue != null,
+        confirmLoading = isSaving,
+        dismissText = if (isSaving) null else "Cancel",
+        content = {
+            AppDropdownField(
+                label = "Animal",
+                options = animals,
+                selected = animals.find { it.id == selectedAnimalId },
+                optionLabel = { "${it.name} (${it.species})" },
+                onSelect = { selectedAnimalId = it.id },
+            )
+            AppDropdownField(
+                label = "Vaccine",
+                options = VACCINE_OPTIONS,
+                selected = vaccineName.takeIf { it.isNotEmpty() },
+                optionLabel = { it },
+                onSelect = { vaccineName = it },
+            )
+            AppPickerField(
+                label = "Date given",
+                value = dateGiven?.let { formatDateMillis(it) },
+                icon = Icons.Default.CalendarMonth,
+                placeholder = "Select date given",
+                onClick = { pickerTarget = PickerTarget.DATE_GIVEN },
+            )
+            AppPickerField(
+                label = "Next due",
+                value = nextDue?.let { formatDateMillis(it) },
+                icon = Icons.Default.EventAvailable,
+                placeholder = "Select next due",
                 onClick = {
-                    val animalId = selectedAnimalId ?: return@Button
-                    val given = dateGiven ?: return@Button
-                    val due = nextDue ?: return@Button
-                    onConfirm(animalId, vaccineName, given, due)
+                    pickerTarget = PickerTarget.NEXT_DUE
+                    if (nextDue == null) {
+                        nextDue = dateGiven?.let { defaultNextDue(it) }
+                    }
                 },
-                enabled = selectedAnimalId != null &&
-                    vaccineName.isNotEmpty() &&
-                    dateGiven != null &&
-                    nextDue != null &&
-                    !isSaving,
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(if (initialVaccination != null) "Save" else "Add")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSaving) {
-                Text("Cancel")
-            }
+            )
         },
     )
 
@@ -385,8 +308,10 @@ private fun AddVaccinationDialog(
 
         DatePickerDialog(
             onDismissRequest = { pickerTarget = null },
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = DatePickerDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { utcMillis ->
                             val localMillis = utcMidnightToLocalNoon(utcMillis)
@@ -401,13 +326,19 @@ private fun AddVaccinationDialog(
                         }
                         pickerTarget = null
                     },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.height(44.dp),
                 ) {
-                    Text("OK")
+                    Text("OK", style = MaterialTheme.typography.labelLarge)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pickerTarget = null }) {
-                    Text("Cancel")
+                OutlinedButton(
+                    onClick = { pickerTarget = null },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.height(44.dp),
+                ) {
+                    Text("Cancel", style = MaterialTheme.typography.labelLarge)
                 }
             },
         ) {
@@ -494,16 +425,19 @@ private fun VaccinationCard(
                         )
                     }
                     if (showMenu) {
-                        androidx.compose.material3.DropdownMenu(
+                        AppDropdownMenu(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Edit") },
+                            AppMenuItem(
+                                text = "Edit",
+                                leadingIcon = Icons.Default.Edit,
                                 onClick = { showMenu = false; onEdit() },
                             )
-                            DropdownMenuItem(
-                                text = { Text("Delete") },
+                            AppMenuItem(
+                                text = "Delete",
+                                leadingIcon = Icons.Default.DeleteOutline,
+                                danger = true,
                                 onClick = { showMenu = false; onDelete() },
                             )
                         }
@@ -531,7 +465,20 @@ private fun VaccinationCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AccentDot(color = AppColors.Primary)
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(AppColors.SoftTeal),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Vaccines,
+                        contentDescription = null,
+                        tint = AppColors.Secondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
                 Spacer(modifier = Modifier.width(AppSpacing.SM))
                 Text(
                     text = "${vaccination.vaccineName} — ${formatDateMillis(vaccination.dateGiven)}",

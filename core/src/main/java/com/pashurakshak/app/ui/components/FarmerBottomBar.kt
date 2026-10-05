@@ -1,21 +1,19 @@
 package com.pashurakshak.app.ui.components
 
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -25,64 +23,47 @@ import com.pashurakshak.app.navigation.Screen
 fun FarmerBottomBar(navController: NavHostController) {
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
-    NavigationBar(
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)),
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp,
     ) {
-        FarmerTab(
-            selected = currentRoute == Screen.FarmerHome.route,
-            onClick = { navController.navigateToFarmerTab(Screen.FarmerHome.route) },
-            icon = { Icon(Icons.Default.Home, contentDescription = null) },
-            label = "Home",
-        )
-        FarmerTab(
-            selected = currentRoute == Screen.MyAnimals.route,
-            onClick = { navController.navigateToFarmerTab(Screen.MyAnimals.route) },
-            icon = { Icon(Icons.Default.Pets, contentDescription = null) },
-            label = "Animals",
-        )
-        FarmerTab(
-            selected = currentRoute == Screen.ReportSickAnimal.route,
-            onClick = { navController.navigateToFarmerTab(Screen.ReportSickAnimal.route) },
-            icon = { Icon(Icons.Default.Warning, contentDescription = null) },
-            label = "Report",
-        )
-        FarmerTab(
-            selected = currentRoute == Screen.Profile.route,
-            onClick = { navController.navigateToFarmerTab(Screen.Profile.route) },
-            icon = { Icon(Icons.Default.Person, contentDescription = null) },
-            label = "Profile",
-        )
-    }
-}
-
-@Composable
-private fun RowScope.FarmerTab(
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: @Composable () -> Unit,
-    label: String,
-) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = icon,
-        label = {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+        ) {
+            BottomBarTab(
+                selected = currentRoute == Screen.FarmerHome.route,
+                onClick = { navController.navigateToFarmerTab(Screen.FarmerHome.route) },
+                icon = Icons.Default.Home,
+                label = "Home",
             )
-        },
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedTextColor = MaterialTheme.colorScheme.primary,
-        ),
-        modifier = Modifier.weight(1f),
-    )
+            BottomBarTab(
+                selected = currentRoute == Screen.MyAnimals.route,
+                onClick = { navController.navigateToFarmerTab(Screen.MyAnimals.route) },
+                icon = Icons.Default.Pets,
+                label = "Animals",
+            )
+            BottomBarTab(
+                selected = currentRoute == Screen.ReportSickAnimal.route,
+                onClick = { navController.navigateToFarmerTab(Screen.ReportSickAnimal.route) },
+                icon = Icons.Default.Warning,
+                label = "Report",
+            )
+            BottomBarTab(
+                selected = currentRoute == Screen.Profile.route,
+                onClick = { navController.navigateToFarmerTab(Screen.Profile.route) },
+                icon = Icons.Default.Person,
+                label = "Profile",
+            )
+        }
+    }
 }
 
 private fun NavHostController.navigateToFarmerTab(route: String) {

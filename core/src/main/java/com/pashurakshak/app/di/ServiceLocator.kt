@@ -9,6 +9,7 @@ import com.pashurakshak.app.data.ReportRepository
 import com.pashurakshak.app.data.VaccinationRepository
 import com.pashurakshak.app.data.VetRepository
 import com.pashurakshak.app.data.local.TursoClient
+import com.pashurakshak.app.data.remote.AiRiskApi
 import com.pashurakshak.app.data.remote.B2UploadService
 import com.pashurakshak.app.data.remote.ReportPushApi
 
@@ -35,5 +36,6 @@ object ServiceLocator {
     val alertRepository: AlertRepository by lazy { AlertRepository(database) }
     val b2UploadService: B2UploadService by lazy { B2UploadService(reportRepository) }
     val reportPushApi: ReportPushApi by lazy { ReportPushApi() }
+    val aiRiskApi: AiRiskApi by lazy { AiRiskApi() }
     val authRepository: AuthRepository by lazy { AuthRepository(database) }
 }

@@ -1,19 +1,24 @@
 package com.pashurakshak.app.ui.navigation
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pashurakshak.app.data.SessionManager
@@ -39,6 +44,20 @@ import com.pashurakshak.app.ui.farmer.VaccinationStatusScreen
 import com.pashurakshak.app.ui.profile.ProfileScreen
 import com.pashurakshak.app.ui.vet.CaseDetailScreen
 import com.pashurakshak.app.ui.vet.VetCaseQueueScreen
+
+// Full-screen routes with no bottom chrome (auth, detail & tool pages reached
+// with a back button). Every other route gets the floating bar, so new tab
+// pages get it automatically instead of having to be registered here.
+private val NoBarRoutes = setOf(
+    Screen.Login.route,
+    Screen.Register.route,
+    Screen.ForgotPin.route,
+    Screen.Onboarding.route,
+    Screen.QrPassport.route,
+    Screen.CaseDetail.route,
+    Screen.AiInsight.route,
+    Screen.B2UploadTest.route,
+)
 
 @Composable
 fun AppNavHost(
@@ -78,19 +97,23 @@ fun AppNavHost(
         }
     }
 
-    Column(
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding(),
     ) {
-        SyncStatusBanner()
-        NavHost(
-            navController = navController,
-            startDestination = startDestination,
-            modifier = Modifier
-                .weight(1f)
-                .consumeWindowInsets(WindowInsets.statusBars),
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SyncStatusBanner()
+            NavHost(
+                navController = navController,
+                startDestination = startDestination,
+                modifier = Modifier
+                    .weight(1f)
+                    .consumeWindowInsets(WindowInsets.statusBars),
+            ) {
             // Auth: login / register / forgot-PIN
             composable(Screen.Login.route) {
                 LoginScreen(
@@ -156,7 +179,6 @@ fun AppNavHost(
                     onOpenProfile = { navController.navigate(Screen.Profile.route) },
                     onOpenQrScan = { navController.navigate(Screen.MyAnimals.route) },
                     onOpenB2Test = { navController.navigate(Screen.B2UploadTest.route) },
-                    bottomBar = { FarmerBottomBar(navController) },
                 )
             }
             composable(Screen.Profile.route) {
@@ -174,24 +196,20 @@ fun AppNavHost(
                     onAnimalClick = { animalId ->
                         navController.navigate(Screen.QrPassport.withAnimalId(animalId))
                     },
-                    bottomBar = { FarmerBottomBar(navController) },
                 )
             }
             composable(Screen.ReportSickAnimal.route) {
                 ReportSickAnimalScreen(
                     onSubmitted = { _, _ -> },
-                    bottomBar = { FarmerBottomBar(navController) },
                     navController = navController,
                 )
             }
             composable(Screen.VaccinationStatus.route) {
                 VaccinationStatusScreen(
-                    bottomBar = { FarmerBottomBar(navController) },
                 )
             }
             composable(Screen.Alerts.route) {
                 AlertsScreen(
-                    bottomBar = { FarmerBottomBar(navController) },
                 )
             }
             composable(
@@ -212,7 +230,6 @@ fun AppNavHost(
                     onOpenCaseQueue = { navController.navigate(Screen.VetCaseQueue.route) },
                     onOpenAlerts = { navController.navigate(Screen.VetAlerts.route) },
                     onOpenProfile = { navController.navigate(Screen.Profile.route) },
-                    bottomBar = { VetBottomBar(navController) },
                 )
             }
             composable(Screen.VetCaseQueue.route) {
@@ -227,7 +244,6 @@ fun AppNavHost(
                             launchSingleTop = true
                         }
                     },
-                    bottomBar = { VetBottomBar(navController) },
                 )
             }
             composable(
@@ -249,7 +265,6 @@ fun AppNavHost(
                 AlertsScreen(
                     recipientRole = "vet",
                     recipientId = null,
-                    bottomBar = { VetBottomBar(navController) },
                 )
             }
             composable(Screen.MyReports.route) {
@@ -259,7 +274,6 @@ fun AppNavHost(
                             launchSingleTop = true
                         }
                     },
-                    bottomBar = { FarmerBottomBar(navController) },
                 )
             }
             composable(
@@ -284,5 +298,21 @@ fun AppNavHost(
                 B2UploadTestScreen(onBack = { navController.popBackStack() })
             }
         }
+        }
+
+        if (currentRoute != null && currentRoute !in NoBarRoutes) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
+            ) {
+                when (SessionManager.role) {
+                    SessionManager.Role.FARMER -> FarmerBottomBar(navController)
+                    SessionManager.Role.VET -> VetBottomBar(navController)
+                    null -> Unit
+                }
+            }
+        }
     }
 }
+

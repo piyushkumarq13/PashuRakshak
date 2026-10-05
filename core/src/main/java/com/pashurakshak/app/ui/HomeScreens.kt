@@ -20,18 +20,18 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +51,7 @@ import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.FadeInContent
+import androidx.compose.material3.Scaffold
 import com.pashurakshak.app.ui.components.InteractiveCard
 import com.pashurakshak.app.ui.components.ScreenHeader
 import com.pashurakshak.app.ui.components.SectionCard
@@ -67,16 +68,16 @@ data class HomeShortcut(
 )
 
 private val DAILY_TIPS = listOf(
-    "Provide fresh water to all animals twice daily — dehydration reduces milk yield by up to 25%.",
-    "Check hoof health weekly — early detection of lameness prevents costly treatments later.",
-    "Keep vaccination records updated — a missed dose can leave your herd vulnerable to outbreaks.",
-    "Monitor feed quality — moldy feed can cause serious digestive issues in cattle and goats.",
+    "Provide fresh water to all animals twice daily - dehydration reduces milk yield by up to 25%.",
+    "Check hoof health weekly - early detection of lameness prevents costly treatments later.",
+    "Keep vaccination records updated - a missed dose can leave your herd vulnerable to outbreaks.",
+    "Monitor feed quality - moldy feed can cause serious digestive issues in cattle and goats.",
     "Isolate new animals for at least 14 days to prevent disease spread to the existing herd.",
-    "Schedule regular vet check-ups — prevention is always cheaper than treatment.",
-    "Ensure proper shelter ventilation — ammonia buildup from waste affects respiratory health.",
-    "Quarantine any animal showing signs of illness immediately — early action saves the herd.",
-    "Rotate grazing pastures seasonally — this prevents parasite buildup and allows grass recovery.",
-    "Maintain accurate weight records — sudden weight loss is often the first sign of health issues.",
+    "Schedule regular vet check-ups - prevention is always cheaper than treatment.",
+    "Ensure proper shelter ventilation - ammonia buildup from waste affects respiratory health.",
+    "Quarantine any animal showing signs of illness immediately - early action saves the herd.",
+    "Rotate grazing pastures seasonally - this prevents parasite buildup and allows grass recovery.",
+    "Maintain accurate weight records - sudden weight loss is often the first sign of health issues.",
 )
 
 private fun dailyTip(): String {
@@ -94,7 +95,6 @@ fun FarmerHomeScreen(
     onOpenProfile: () -> Unit = {},
     onOpenQrScan: () -> Unit = {},
     onOpenB2Test: () -> Unit = {},
-    bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel {
         HomeViewModel(
@@ -118,7 +118,6 @@ fun FarmerHomeScreen(
 
     Scaffold(
         modifier = modifier,
-        bottomBar = bottomBar,
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         LazyColumn(
@@ -181,44 +180,52 @@ fun FarmerHomeScreen(
                         modifier = Modifier.padding(horizontal = AppSpacing.Screen),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
-                        SectionCard(title = "Quick actions") {
-                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.SM)) {
-                                QuickActionRow(
-                                    icon = Icons.Default.QrCodeScanner,
-                                    title = "Scan QR",
-                                    subtitle = "Identify animals by scanning",
-                                    tint = AppColors.Secondary,
-                                    onClick = onOpenQrScan,
-                                )
-                                QuickActionRow(
-                                    icon = Icons.Default.Warning,
-                                    title = "Report a sick animal",
-                                    subtitle = "Share symptoms with a vet",
-                                    tint = AppColors.Danger,
-                                    onClick = onOpenReport,
-                                )
-                                QuickActionRow(
-                                    icon = Icons.Default.Vaccines,
-                                    title = "Vaccination status",
-                                    subtitle = "History & upcoming doses",
-                                    tint = AppColors.Secondary,
-                                    onClick = onOpenVaccination,
-                                )
-                                QuickActionRow(
-                                    icon = Icons.AutoMirrored.Filled.ReceiptLong,
-                                    title = "My reports",
-                                    subtitle = "Track AI risk & vet visits",
-                                    tint = AppColors.Info,
-                                    onClick = onOpenMyReports,
-                                )
-                                QuickActionRow(
-                                    icon = Icons.Default.Pets,
-                                    title = "My animals",
-                                    subtitle = "QR passports & health",
-                                    tint = AppColors.Primary,
-                                    onClick = onOpenAnimals,
-                                )
-                            }
+                        Text(
+                            text = "Quick actions",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
+                        ) {
+                            ActionTile(
+                                icon = Icons.Default.Warning,
+                                title = "Report sick animal",
+                                subtitle = "Share symptoms with a vet",
+                                tint = AppColors.Danger,
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenReport,
+                            )
+                            ActionTile(
+                                icon = Icons.Default.Vaccines,
+                                title = "Vaccination",
+                                subtitle = "History & upcoming doses",
+                                tint = AppColors.Secondary,
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenVaccination,
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
+                        ) {
+                            ActionTile(
+                                icon = Icons.AutoMirrored.Filled.ReceiptLong,
+                                title = "My reports",
+                                subtitle = "AI risk & vet visits",
+                                tint = AppColors.Info,
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenMyReports,
+                            )
+                            ActionTile(
+                                icon = Icons.Default.Pets,
+                                title = "My animals",
+                                subtitle = "QR passports & health",
+                                tint = AppColors.Primary,
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenAnimals,
+                            )
                         }
                     }
                 }
@@ -272,7 +279,7 @@ fun FarmerHomeScreen(
                                 )
                                 OverviewLine(
                                     label = "Phone",
-                                    value = SessionManager.phone?.let { "+91 $it" } ?: "—",
+                                    value = SessionManager.phone?.let { "+91 $it" } ?: "Not set",
                                     icon = Icons.Default.Person,
                                 )
                                 OverviewLine(
@@ -291,22 +298,35 @@ fun FarmerHomeScreen(
                                     icon = Icons.Default.Notifications,
                                     highlight = unreadAlerts > 0,
                                 )
-                                androidx.compose.foundation.layout.Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = AppSpacing.XS, bottom = AppSpacing.SM),
-                                    verticalArrangement = Arrangement.spacedBy(AppSpacing.XS),
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = AppColors.SoftAmber,
                                 ) {
-                                    Text(
-                                        text = "Daily health tip",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = dailyTip(),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lightbulb,
+                                            contentDescription = null,
+                                            tint = AppColors.Warning,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = "Daily health tip",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = AppColors.Warning,
+                                            )
+                                            Text(
+                                                text = dailyTip(),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -329,6 +349,7 @@ private fun HeroHeader(
         java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 17 -> "Good afternoon"
         else -> "Good evening"
     }
+    val initial = displayName.trim().firstOrNull()?.uppercaseChar()?.toString()
 
     Box(
         modifier = Modifier
@@ -354,12 +375,21 @@ private fun HeroHeader(
                     .background(Color.White.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp),
-                )
+                if (initial != null) {
+                    Text(
+                        text = initial,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(AppSpacing.MD))
             Column(modifier = Modifier.weight(1f)) {
@@ -383,19 +413,81 @@ private fun HeroHeader(
                     )
                 }
             }
-            IconButton(
-                onClick = onOpenAlerts,
+            Box {
+                IconButton(
+                    onClick = onOpenAlerts,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Alerts",
+                        tint = Color.White,
+                    )
+                }
+                if (unreadAlerts > 0) {
+                    Surface(
+                        color = AppColors.Danger,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    ) {
+                        Text(
+                            text = if (unreadAlerts > 9) "9+" else unreadAlerts.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionTile(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    InteractiveCard(onClick = onClick, modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpacing.MD),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+        ) {
+            Box(
                 modifier = Modifier
                     .size(42.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f)),
+                    .clip(MaterialTheme.shapes.small)
+                    .background(tint.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "Alerts",
-                    tint = Color.White,
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(22.dp),
                 )
             }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -498,7 +590,6 @@ fun VetHomeScreen(
     onOpenCaseQueue: () -> Unit,
     onOpenAlerts: () -> Unit = {},
     onOpenProfile: () -> Unit = {},
-    bottomBar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: com.pashurakshak.app.ui.vet.VetHomeViewModel = viewModel {
         com.pashurakshak.app.ui.vet.VetHomeViewModel(
@@ -518,7 +609,6 @@ fun VetHomeScreen(
 
     Scaffold(
         modifier = modifier,
-        bottomBar = bottomBar,
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         LazyColumn(
@@ -705,7 +795,7 @@ private fun VetHeroHeader(
             Spacer(modifier = Modifier.width(AppSpacing.MD))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "$greeting · Veterinarian",
+                    text = "$greeting, Veterinarian",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.85f),
                 )
@@ -725,18 +815,35 @@ private fun VetHeroHeader(
                     )
                 }
             }
-            IconButton(
-                onClick = onOpenAlerts,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f)),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "Alerts",
-                    tint = Color.White,
-                )
+            Box {
+                IconButton(
+                    onClick = onOpenAlerts,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Alerts",
+                        tint = Color.White,
+                    )
+                }
+                if (unreadAlerts > 0) {
+                    Surface(
+                        color = AppColors.Danger,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    ) {
+                        Text(
+                            text = if (unreadAlerts > 9) "9+" else unreadAlerts.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.width(AppSpacing.SM))
             IconButton(

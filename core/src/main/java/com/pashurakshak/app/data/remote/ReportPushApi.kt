@@ -73,6 +73,8 @@ class ReportPushApi(
             put("risk_breakdown", JSONObject(report.riskBreakdown).toString())
             put("status", report.status.dbValue)
             put("created_at", report.createdAt)
+            put("qr_code_id", report.qrCodeId)
+            put("disease_description", report.diseaseDescription ?: JSONObject.NULL)
         }
 
     private fun open(rawUrl: String, method: String): HttpURLConnection {

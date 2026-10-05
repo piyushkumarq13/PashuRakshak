@@ -225,6 +225,9 @@ object RemoteSync {
                         aiAdvisory = row.optString("aiAdvisory").takeIf { it.isNotBlank() },
                         vetAssessment = row.optString("vet_assessment", "").takeIf { it.isNotBlank() },
                         assignedVetId = row.optString("assigned_vet_id", "").takeIf { it.isNotBlank() },
+                        qrCodeId = row.optString("qr_code_id").takeIf { it.isNotBlank() }
+                            ?: "QR-" + java.util.UUID.randomUUID().toString().uppercase(),
+                        diseaseDescription = row.optString("disease_description").takeIf { it.isNotBlank() },
                     ),
                 )
             }.onFailure { Log.w(TAG, "report pull row failed: ${it.message}") }

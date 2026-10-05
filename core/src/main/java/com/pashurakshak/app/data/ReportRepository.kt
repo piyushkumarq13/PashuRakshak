@@ -21,8 +21,8 @@ class ReportRepository(private val db: TursoClient) {
             INSERT INTO symptom_reports (
                 id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
                 latitude, longitude, risk_score, risk_breakdown, status, synced, created_at,
-                assigned_vet_id, ai_risk_category, vet_assessment, village
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                assigned_vet_id, ai_risk_category, vet_assessment, village, qr_code_id, disease_description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             report.id,
             report.animalId,
@@ -41,6 +41,8 @@ class ReportRepository(private val db: TursoClient) {
             report.aiAdvisory ?: "",
             report.vetAssessment ?: "",
             report.village ?: "",
+            report.qrCodeId,
+            report.diseaseDescription ?: "",
         )
     }
 
@@ -91,7 +93,7 @@ class ReportRepository(private val db: TursoClient) {
                 animal_id = ?, farmer_id = ?, symptoms = ?, photo_local_path = ?, photo_remote_url = ?,
                 latitude = ?, longitude = ?, risk_score = ?, risk_breakdown = ?, status = ?,
                 synced = ?, created_at = ?, assigned_vet_id = ?, ai_risk_category = ?,
-                vet_assessment = ?, village = ?
+                vet_assessment = ?, village = ?, qr_code_id = ?, disease_description = ?
             WHERE id = ?
             """.trimIndent(),
             report.animalId,
@@ -110,6 +112,8 @@ class ReportRepository(private val db: TursoClient) {
             report.aiAdvisory ?: "",
             report.vetAssessment ?: "",
             report.village ?: "",
+            report.qrCodeId,
+            report.diseaseDescription ?: "",
             report.id,
         )
     }
@@ -134,6 +138,8 @@ class ReportRepository(private val db: TursoClient) {
                     aiAdvisory = existing.aiAdvisory ?: report.aiAdvisory,
                     vetAssessment = existing.vetAssessment ?: report.vetAssessment,
                     assignedVetId = existing.assignedVetId ?: report.assignedVetId,
+                    qrCodeId = existing.qrCodeId.ifBlank { report.qrCodeId },
+                    diseaseDescription = existing.diseaseDescription ?: report.diseaseDescription,
                 ),
             )
         }
@@ -158,6 +164,8 @@ class ReportRepository(private val db: TursoClient) {
         aiAdvisory = stringOrNull(14),
         vetAssessment = stringOrNull(15),
         village = stringOrNull(16),
+        qrCodeId = stringOrNull(17).orEmpty(),
+        diseaseDescription = stringOrNull(18)?.takeIf { it.isNotBlank() },
     )
 
     private fun symptomsToJson(symptoms: List<String>): String =

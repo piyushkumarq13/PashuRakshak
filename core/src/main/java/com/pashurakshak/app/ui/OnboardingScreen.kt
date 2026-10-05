@@ -1,32 +1,32 @@
 package com.pashurakshak.app.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pashurakshak.app.ui.auth.AuthBranding
+import com.pashurakshak.app.ui.auth.AuthErrorText
+import com.pashurakshak.app.ui.auth.AuthFormCard
 import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.AppTextField
+import com.pashurakshak.app.ui.components.LanguageSelector
+import com.pashurakshak.app.ui.components.PrimaryButton
 
 @Composable
 fun OnboardingScreen(
@@ -35,119 +35,77 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val error = remember(state.error) { state.error }
-    val isSubmitted = remember(state.isSubmitted) { state.isSubmitted }
-    val isLoading = remember(state.isLoading) { state.isLoading }
+
+    LaunchedEffect(state.isSubmitted) {
+        if (state.isSubmitted) {
+            viewModel.resetSubmitted()
+            onSubmitComplete()
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = AppSpacing.Screen)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.LG, Alignment.CenterVertically),
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(horizontal = AppSpacing.Screen),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = "Welcome, Farmer!",
-            style = MaterialTheme.typography.headlineMedium,
+        Spacer(modifier = Modifier.height(48.dp))
+        AuthBranding(
+            title = "Welcome, Farmer!",
+            subtitle = "Tell us about yourself so we can personalize your experience",
         )
-        Text(
-            text = "Tell us about yourself so we can personalize your experience",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Spacer(modifier = Modifier.height(AppSpacing.XL))
 
-        OutlinedTextField(
-            value = state.name,
-            onValueChange = viewModel::onNameChange,
-            label = { Text("Name") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-
-        OutlinedTextField(
-            value = state.email,
-            onValueChange = viewModel::onEmailChange,
-            label = { Text("Email") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-        )
-
-        OutlinedTextField(
-            value = state.animalCountText,
-            onValueChange = viewModel::onAnimalCountChange,
-            label = { Text("Number of Animals") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
-
-        OutlinedTextField(
-            value = state.village,
-            onValueChange = viewModel::onVillageChange,
-            label = { Text("Village") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-
-        OutlinedTextField(
-            value = state.pincode,
-            onValueChange = viewModel::onPincodeChange,
-            label = { Text("Pincode") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.LG),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Language:", style = MaterialTheme.typography.bodyMedium)
-            RadioButton(
-                selected = state.language == "hi",
-                onClick = { viewModel.onLanguageChange("hi") },
+        AuthFormCard {
+            AppTextField(
+                value = state.name,
+                onValueChange = viewModel::onNameChange,
+                label = "Name",
             )
-            Text("Hindi")
-            RadioButton(
-                selected = state.language == "en",
-                onClick = { viewModel.onLanguageChange("en") },
+            AppTextField(
+                value = state.email,
+                onValueChange = viewModel::onEmailChange,
+                label = "Email",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             )
-            Text("English")
-        }
-
-        if (error != null) {
-            Text(
-                text = error,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
+            AppTextField(
+                value = state.animalCountText,
+                onValueChange = viewModel::onAnimalCountChange,
+                label = "Number of Animals",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
-        }
-
-        LaunchedEffect(isSubmitted) {
-            if (isSubmitted) {
-                viewModel.resetSubmitted()
-                onSubmitComplete()
-            }
-        }
-
-        Button(
-            onClick = { viewModel.submit() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            enabled = !isLoading,
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onPrimary,
+            AppTextField(
+                value = state.village,
+                onValueChange = viewModel::onVillageChange,
+                label = "Village",
+            )
+            AppTextField(
+                value = state.pincode,
+                onValueChange = viewModel::onPincodeChange,
+                label = "Pincode",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            Column {
+                Text(
+                    text = "Preferred language",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = AppSpacing.SM),
                 )
-            } else {
-                Text("Complete Onboarding", style = MaterialTheme.typography.titleMedium)
+                LanguageSelector(
+                    selected = state.language,
+                    onSelect = viewModel::onLanguageChange,
+                )
             }
+            state.error?.let { AuthErrorText(it) }
+            PrimaryButton(
+                text = "Complete Onboarding",
+                onClick = { viewModel.submit() },
+                loading = state.isLoading,
+            )
         }
+        Spacer(modifier = Modifier.height(AppSpacing.XL))
     }
 }

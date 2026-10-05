@@ -27,6 +27,7 @@ enum class Symptom(val label: String, val basePoints: Int) {
     LESS_MILK("Less Milk", 15),
     SWELLING("Swelling", 0),
     MOUTH_PROBLEM("Mouth Problem", 0),
+    OTHER("Other", 0),
 }
 
 internal fun calculateRiskScore(symptoms: Collection<Symptom>): Int {
@@ -42,7 +43,7 @@ data class ReportSickAnimalUiState(
     val animals: List<Animal> = emptyList(),
     val selectedAnimalId: String? = null,
     val selectedSymptoms: Set<Symptom> = emptySet(),
-    val photoPath: String? = null,
+    val photoPaths: List<String> = emptyList(),
     val latitudeText: String = "",
     val longitudeText: String = "",
     val villageText: String = "",
@@ -51,17 +52,38 @@ data class ReportSickAnimalUiState(
     val error: String? = null,
     val aiAdvisory: String? = null,
     val lastReportId: String? = null,
+    val lastQrCodeId: String? = null,
+    val diseaseDescription: String = "",
+    val customDiseaseText: String = "",
+    val isAnalyzingAi: Boolean = false,
+    val aiAnalysis: String? = null,
+    val aiScore: Int? = null,
+    val aiLikelyCondition: String? = null,
 ) {
     val latitude: Double? get() = latitudeText.toDoubleOrNull()?.takeIf { it in -90.0..90.0 }
     val longitude: Double? get() = longitudeText.toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
-    val riskScore: Int get() = calculateRiskScore(selectedSymptoms)
+    val ruleBasedScore: Int get() = calculateRiskScore(selectedSymptoms)
+
+    /** Final score = rule-based score blended with the AI score when available. */
+    val riskScore: Int
+        get() = aiScore?.let { (ruleBasedScore + it) / 2 } ?: ruleBasedScore
+
+    val hasOtherSelected: Boolean
+        get() = selectedSymptoms.any { it == Symptom.OTHER }
+
+    val hasSomeDiseaseDetails: Boolean
+        get() = diseaseDescription.isNotBlank() ||
+            (hasOtherSelected && customDiseaseText.isNotBlank())
+
     val canSubmit: Boolean
         get() = selectedAnimalId != null &&
             selectedSymptoms.isNotEmpty() &&
+            (!hasOtherSelected || customDiseaseText.isNotBlank()) &&
             latitude != null &&
             longitude != null &&
             villageText.isNotBlank() &&
-            !isSubmitting
+            !isSubmitting &&
+            !isAnalyzingAi
 }
 
 class ReportSickAnimalViewModel(
@@ -139,12 +161,24 @@ class ReportSickAnimalViewModel(
         }
     }
 
-    fun onPhotoSelected(path: String) {
-        _uiState.update { it.copy(photoPath = path) }
+    fun onPhotoAdded(path: String) {
+        _uiState.update { state ->
+            if (path.isBlank() || path in state.photoPaths ||
+                state.photoPaths.size >= SymptomReport.MAX_PHOTOS
+            ) {
+                state
+            } else {
+                state.copy(photoPaths = state.photoPaths + path)
+            }
+        }
     }
 
-    fun onPhotoRemoved() {
-        _uiState.update { it.copy(photoPath = null) }
+    fun onPhotoRemovedAt(index: Int) {
+        _uiState.update { state ->
+            val updated = state.photoPaths.toMutableList()
+            if (index in updated.indices) updated.removeAt(index)
+            state.copy(photoPaths = updated)
+        }
     }
 
     fun onLocationFetched(latitude: Double, longitude: Double) {
@@ -173,6 +207,58 @@ class ReportSickAnimalViewModel(
         _uiState.update { it.copy(error = message) }
     }
 
+    fun onDiseaseDescriptionChanged(text: String) {
+        _uiState.update {
+            it.copy(diseaseDescription = text, aiAnalysis = null, aiScore = null, aiLikelyCondition = null)
+        }
+    }
+
+    fun onCustomDiseaseChanged(text: String) {
+        _uiState.update {
+            it.copy(customDiseaseText = text, aiAnalysis = null, aiScore = null, aiLikelyCondition = null)
+        }
+    }
+
+    /** Ask the server-side AI to analyze the disease first, before the score is shown. */
+    fun analyzeWithAi() {
+        val state = _uiState.value
+        val symptomLabels = Symptom.entries
+            .filter { it in state.selectedSymptoms && it != Symptom.OTHER }
+            .map { it.label }
+        val customDisease = state.customDiseaseText.trim()
+        val symptoms = (symptomLabels + listOfNotNull(customDisease.takeIf { state.hasOtherSelected && it.isNotBlank() }))
+        if (!state.hasSomeDiseaseDetails && symptoms.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAnalyzingAi = true, error = null) }
+            when (val result = ServiceLocator.aiRiskApi.analyze(
+                symptoms = symptoms,
+                diseaseDescription = state.diseaseDescription.ifBlank { customDisease.takeIf { it.isNotBlank() } },
+                species = state.animals.firstOrNull { it.id == state.selectedAnimalId }?.species,
+            )) {
+                is com.pashurakshak.app.data.remote.AiRiskApi.Result.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isAnalyzingAi = false,
+                            aiAnalysis = result.analysis,
+                            aiScore = result.score,
+                            aiLikelyCondition = result.likelyCondition,
+                        )
+                    }
+                }
+                is com.pashurakshak.app.data.remote.AiRiskApi.Result.Failure -> {
+                    _uiState.update {
+                        it.copy(
+                            isAnalyzingAi = false,
+                            error = "AI analysis unavailable, using rule-based score",
+                            aiAnalysis = null,
+                            aiScore = null,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun submit() {
         val state = _uiState.value
         if (!state.canSubmit) return
@@ -185,19 +271,27 @@ class ReportSickAnimalViewModel(
             _uiState.update { it.copy(isSubmitting = true, error = null, aiAdvisory = null) }
             runCatching {
                 val symptoms = Symptom.entries.filter { it in state.selectedSymptoms }
-                val riskScore = calculateRiskScore(symptoms)
+                val symptomLabels = symptoms.map { it.label }.map { label ->
+                    if (label == Symptom.OTHER.label && state.customDiseaseText.isNotBlank()) {
+                        state.customDiseaseText.trim()
+                    } else {
+                        label
+                    }
+                }
+                val riskScore = state.riskScore
                 val breakdown = buildMap {
                     symptoms.forEach { put(it.label, it.basePoints) }
                     val bonus = 10 * (symptoms.size - 1)
                     if (bonus > 0) put("multiple_symptoms", bonus)
+                    state.aiScore?.let { put("ai_score", it) }
                 }
                 val animal = state.animals.firstOrNull { it.id == animalId }
                 val animalLabel = animal?.let { "${it.name} (${it.species})" } ?: "animal"
                 val report = SymptomReport(
                     animalId = animalId,
                     farmerId = farmerId,
-                    symptoms = symptoms.map { it.label },
-                    photoLocalPath = state.photoPath.orEmpty(),
+                    symptoms = symptomLabels,
+                    photoLocalPath = SymptomReport.joinPhotos(state.photoPaths),
                     photoRemoteUrl = null,
                     latitude = latitude,
                     longitude = longitude,
@@ -206,6 +300,7 @@ class ReportSickAnimalViewModel(
                     status = ReportStatus.REPORTED,
                     synced = false,
                     village = village,
+                    diseaseDescription = state.diseaseDescription.ifBlank { state.customDiseaseText },
                 )
                 val reportId = report.id
                 reportRepository.insert(report)
@@ -233,7 +328,7 @@ class ReportSickAnimalViewModel(
                 when (pushResult) {
                     is ReportPushApi.PushResult.Success -> {
                         val aiAdvisory = pushResult.aiAdvisory
-                        _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = aiAdvisory, lastReportId = reportId) }
+                        _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = aiAdvisory, lastReportId = reportId, lastQrCodeId = report.qrCodeId) }
                     }
                     is ReportPushApi.PushResult.Failure -> {
                         runCatching {
@@ -241,7 +336,7 @@ class ReportSickAnimalViewModel(
                                 com.pashurakshak.app.di.ServiceLocator.context,
                             )
                         }
-                        _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = null, lastReportId = reportId) }
+                        _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = null, lastReportId = reportId, lastQrCodeId = report.qrCodeId) }
                     }
                 }
             }.onFailure { error ->

@@ -21,7 +21,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,8 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -48,13 +51,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pashurakshak.app.ui.components.AppDialog
 import com.pashurakshak.app.ui.components.AppSpacing
+import com.pashurakshak.app.ui.components.AppTextField
 import com.pashurakshak.app.ui.components.FadeInContent
+import com.pashurakshak.app.ui.components.LanguageSelector
 import com.pashurakshak.app.ui.components.SectionCard
 import com.pashurakshak.app.ui.theme.AppColors
 
@@ -94,7 +101,9 @@ fun ProfileScreen(
 
     Scaffold(
         modifier = modifier,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = AppSpacing.FloatingBar))
+        },
         topBar = {
             TopAppBar(
                 title = { Text(if (state.editing) "Edit profile" else "My profile") },
@@ -118,7 +127,8 @@ fun ProfileScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = AppSpacing.Screen),
+                .padding(horizontal = AppSpacing.Screen)
+                .padding(bottom = AppSpacing.ListBottom),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
         ) {
             FadeInContent {
@@ -129,87 +139,100 @@ fun ProfileScreen(
                 SectionCard(title = if (state.editing) "Edit your details" else "Account details") {
                     if (state.editing) {
                         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
-                            OutlinedTextField(
+                            AppTextField(
                                 value = state.name,
                                 onValueChange = viewModel::onNameChanged,
-                                label = { Text("Full name") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
+                                label = "Full name",
                             )
-                            OutlinedTextField(
+                            AppTextField(
                                 value = state.phone,
                                 onValueChange = {},
+                                label = "Phone (cannot be changed)",
                                 enabled = false,
-                                label = { Text("Phone (cannot be changed)") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
                             )
-                            OutlinedTextField(
+                            AppTextField(
                                 value = state.email,
                                 onValueChange = { if (!state.isVet) viewModel.onEmailChanged(it) },
+                                label = if (state.isVet) "Email (cannot be changed)" else "Email",
                                 enabled = !state.isVet,
-                                label = { Text(if (state.isVet) "Email (cannot be changed)" else "Email") },
-                                singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                                modifier = Modifier.fillMaxWidth(),
                             )
                             if (!state.isVet) {
-                                OutlinedTextField(
+                                AppTextField(
                                     value = state.village,
                                     onValueChange = viewModel::onVillageChanged,
-                                    label = { Text("Village") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    label = "Village",
                                 )
-                                OutlinedTextField(
+                                AppTextField(
                                     value = state.pincode,
                                     onValueChange = viewModel::onPincodeChanged,
-                                    label = { Text("Pincode") },
-                                    singleLine = true,
+                                    label = "Pincode",
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                OutlinedTextField(
-                                    value = state.animalCountText,
-                                    onValueChange = viewModel::onAnimalCountChanged,
-                                    label = { Text("Number of animals") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                                Column {
+                                    Text(
+                                        text = "Number of animals",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = AppSpacing.XS),
+                                    )
+                                    Text(
+                                        text = state.animalCountText.ifBlank { "0" },
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = "Counted from your animals list",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                             Column {
                                 Text(
                                     text = "Preferred language",
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = AppSpacing.SM),
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(
-                                        selected = state.language == "hi",
-                                        onClick = { viewModel.onLanguageChanged("hi") },
-                                    )
-                                    Text("Hindi")
-                                    Spacer(modifier = Modifier.width(AppSpacing.MD))
-                                    RadioButton(
-                                        selected = state.language == "en",
-                                        onClick = { viewModel.onLanguageChanged("en") },
-                                    )
-                                    Text("English")
-                                }
+                                LanguageSelector(
+                                    selected = state.language,
+                                    onSelect = viewModel::onLanguageChanged,
+                                )
                             }
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.MD)) {
-                            ProfileRow(label = "Name", value = state.name.ifBlank { "Not set" })
-                            ProfileRow(label = "Phone", value = state.phone.ifBlank { "—" }, prefix = "+91 ")
-                            ProfileRow(label = "Email", value = state.email.ifBlank { "Not set" })
+                            ProfileRow(
+                                icon = Icons.Default.Person,
+                                label = "Name",
+                                value = state.name.ifBlank { "Not set" },
+                            )
+                            ProfileRow(
+                                icon = Icons.Default.Phone,
+                                label = "Phone",
+                                value = state.phone.ifBlank { "—" },
+                                prefix = "+91 ",
+                            )
+                            ProfileRow(
+                                icon = Icons.Default.Email,
+                                label = "Email",
+                                value = state.email.ifBlank { "Not set" },
+                            )
                             if (!state.isVet) {
-                                ProfileRow(label = "Village", value = state.village.ifBlank { "Not set" })
-                                ProfileRow(label = "Pincode", value = state.pincode.ifBlank { "Not set" })
-                                ProfileRow(label = "Animals", value = state.animalCountText.ifBlank { "0" })
+                                ProfileRow(
+                                    icon = Icons.Default.LocationOn,
+                                    label = "Village",
+                                    value = state.village.ifBlank { "Not set" },
+                                )
+                                ProfileRow(
+                                    icon = Icons.Default.Pets,
+                                    label = "Animals",
+                                    value = state.animalCountText.ifBlank { "0" },
+                                )
                             }
                             ProfileRow(
+                                icon = Icons.Default.Language,
                                 label = "Language",
                                 value = if (state.language == "en") "English" else "Hindi",
                             )
@@ -282,24 +305,16 @@ fun ProfileScreen(
     }
 
     if (showLogoutDialog) {
-        AlertDialog(
+        AppDialog(
             onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Sign out?") },
-            text = { Text("You will need your phone number and PIN to sign in again.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showLogoutDialog = false
-                        viewModel.logout()
-                    },
-                ) {
-                    Text("Sign out", color = AppColors.Danger)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel")
-                }
+            title = "Sign out?",
+            message = "You will need your phone number and PIN to sign in again.",
+            icon = Icons.AutoMirrored.Filled.Logout,
+            danger = true,
+            confirmText = "Sign out",
+            onConfirm = {
+                showLogoutDialog = false
+                viewModel.logout()
             },
         )
     }
@@ -361,8 +376,31 @@ private fun ProfileAvatar(name: String, phone: String) {
 }
 
 @Composable
-private fun ProfileRow(label: String, value: String, prefix: String = "") {
-    Row(modifier = Modifier.fillMaxWidth()) {
+private fun ProfileRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    prefix: String = "",
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(AppColors.Primary.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = AppColors.Primary,
+                modifier = Modifier.size(17.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(AppSpacing.MD))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
