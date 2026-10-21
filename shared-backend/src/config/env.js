@@ -110,7 +110,8 @@ function loadEnv() {
     smtpUser: readEnv('SMTP_USER'),
     smtpPass: readEnv('SMTP_PASS'),
     // HTTPS email providers (needed on Render Free, which blocks SMTP ports).
-    brevoApiKey: readEnv('BREVO_API_KEY'),
+    brevoApiKey:
+      readEnv('BREVO_API_KEY') ?? readEnv('BREVO_KEY') ?? readEnv('SENDINBLUE_API_KEY'),
     resendApiKey: readEnv('RESEND_API_KEY'),
     mailFrom: readEnv('MAIL_FROM') ?? readEnv('SMTP_USER'),
   };

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { env } from '../../config/env.js';
 import { adminSecret } from '../middleware/adminSecret.js';
 import {
   checkBrevoAccount,
@@ -18,7 +19,18 @@ router.get('/admin/mail', adminSecret, async (_req, res) => {
   const status = getMailerStatus();
   const brevoAccount = status.brevoConfigured ? await checkBrevoAccount() : null;
   const brevoSenders = status.brevoConfigured ? await listBrevoSenders() : null;
-  return res.status(200).json({ ...status, brevoAccount, brevoSenders });
+  const runtime = {
+    nodeEnv: env.nodeEnv,
+    renderServiceName: process.env.RENDER_SERVICE_NAME ?? null,
+    renderServiceId: process.env.RENDER_SERVICE_ID ?? null,
+    renderCommit: process.env.RENDER_GIT_COMMIT ?? null,
+    renderExternalUrl: process.env.RENDER_EXTERNAL_URL ?? null,
+    // Names only — never values. Makes typos like BREVO_KEY visible.
+    mailEnvKeys: Object.keys(process.env)
+      .filter((key) => /BREVO|MAIL|SMTP|RESEND|SENDINBLUE/i.test(key))
+      .sort(),
+  };
+  return res.status(200).json({ ...status, runtime, brevoAccount, brevoSenders });
 });
 
 /**
