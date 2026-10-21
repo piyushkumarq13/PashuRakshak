@@ -1,190 +1,181 @@
 #!/usr/bin/env python3
-"""Re-align ELF PT_LOAD segments to a 16KB page boundary.
+"""Make an ELF shared library loadable on 16 KB-page Android devices.
 
-AGP 8.5.1+ auto-aligns its own native libs, but third-party prebuilt
-.so files (e.g. tech.turso.libsql:libsql) often have PT_LOAD segments
-that are not 16KB-aligned.  This script rewrites the ELF so that every
-PT_LOAD starts at a 16KB offset, by inserting the minimal zero-padding
-between segment data blocks and shifting the section-header table.
+For every PT_LOAD segment the Android dynamic linker requires:
+
+    p_offset % PAGE == p_vaddr % PAGE   (PAGE = 16384)
+
+and recommends `p_align >= 16384`.  Prebuilt libraries are usually linked
+with 4 KB pages, so the segment file offsets and the `.dynamic` program
+header do not line up with their virtual addresses.
+
+This script *inserts* zero padding immediately before each PT_LOAD segment
+(preserving every original byte, including inter-segment gaps), then shifts
+the file offsets of every affected program header and section header.  It
+never rebuilds the file by concatenating segment contents, so relative
+offsets such as PT_DYNAMIC stay valid.
+
+Usage:
+    align-elf-16k.py <library.so> [output.so]
+
+Prints ALREADY_ALIGNED (exit 0) when no changes are needed, otherwise
+ALIGNED (exit 0).
 """
-import sys
 import struct
+import sys
 
 PAGE = 16384
+PT_LOAD = 1
 ELFCLASS32 = 1
 ELFCLASS64 = 2
 
+PT_LOAD_OFF = {ELFCLASS32: 4, ELFCLASS64: 8}
+P_ALIGN_OFF = {ELFCLASS32: 28, ELFCLASS64: 48}
+SH_OFFSET_OFF = {ELFCLASS32: 16, ELFCLASS64: 24}
+SHNOBITS = 8
 
-def pad_to(out, n):
-    out.extend(b'\x00' * n)
+
+class Elf:
+    def __init__(self, data):
+        if len(data) < 52 or data[:4] != b'\x7fELF':
+            raise ValueError('not an ELF file')
+        self.cls = data[4]
+        if self.cls == ELFCLASS64:
+            self.fmt = '<Q'
+            self.e_phoff = struct.unpack_from('<Q', data, 32)[0]
+            self.e_shoff = struct.unpack_from('<Q', data, 40)[0]
+            self.e_phentsize = struct.unpack_from('<H', data, 54)[0]
+            self.e_phnum = struct.unpack_from('<H', data, 56)[0]
+            self.e_shentsize = struct.unpack_from('<H', data, 58)[0]
+            self.e_shnum = struct.unpack_from('<H', data, 60)[0]
+        elif self.cls == ELFCLASS32:
+            self.fmt = '<I'
+            self.e_phoff = struct.unpack_from('<I', data, 28)[0]
+            self.e_shoff = struct.unpack_from('<I', data, 32)[0]
+            self.e_phentsize = struct.unpack_from('<H', data, 42)[0]
+            self.e_phnum = struct.unpack_from('<H', data, 44)[0]
+            self.e_shentsize = struct.unpack_from('<H', data, 46)[0]
+            self.e_shnum = struct.unpack_from('<H', data, 48)[0]
+        else:
+            raise ValueError('unsupported ELF class')
+        self.e_phoff_off = 32 if self.cls == ELFCLASS64 else 28
+        self.e_shoff_off = 40 if self.cls == ELFCLASS64 else 32
+        self.load_off = PT_LOAD_OFF[self.cls]
+        self.p_align_off = P_ALIGN_OFF[self.cls]
+        self.sh_offset_off = SH_OFFSET_OFF[self.cls]
+
+    def phrase(self, data):
+        phdrs = []
+        for i in range(self.e_phnum):
+            base = self.e_phoff + i * self.e_phentsize
+            p_type = struct.unpack_from('<I', data, base)[0]
+            p_offset = struct.unpack_from(self.fmt, data, base + self.load_off)[0]
+            p_vaddr = struct.unpack_from(self.fmt, data, base + (16 if self.cls == ELFCLASS64 else 8))[0]
+            p_align = struct.unpack_from(self.fmt, data, base + self.p_align_off)[0]
+            phdrs.append({
+                'base': base,
+                'type': p_type,
+                'offset': p_offset,
+                'vaddr': p_vaddr,
+                'align': p_align,
+            })
+        return phdrs
 
 
-def align_file(data):
-    if len(data) < 64 or data[:4] != b'\x7fELF':
+def align(data):
+    elf = Elf(data)
+    phdrs = elf.phrase(data)
+    loads = sorted((p for p in phdrs if p['type'] == PT_LOAD), key=lambda p: p['offset'])
+
+    insertions = []  # (original_offset, padding)
+    total = 0
+    for load in loads:
+        # Offset this segment would get after all previous insertions.
+        current = load['offset'] + total
+        target_residue = load['vaddr'] % PAGE
+        pad = (target_residue - (current % PAGE)) % PAGE
+        if pad:
+            insertions.append((load['offset'], pad))
+            total += pad
+
+    need_align_update = any(p['align'] < PAGE for p in loads)
+    if total == 0 and not need_align_update:
         return None
-    cls = data[4]
-    if cls == ELFCLASS64:
-        return align_elf64(data)
-    if cls == ELFCLASS32:
-        return align_elf32(data)
-    return None
 
-
-def align_elf64(b):
-    e_phoff = struct.unpack_from('<Q', b, 32)[0]
-    e_phentsize = struct.unpack_from('<H', b, 54)[0]
-    e_phnum = struct.unpack_from('<H', b, 56)[0]
-    e_shoff = struct.unpack_from('<Q', b, 40)[0]
-    e_shentsize = struct.unpack_from('<H', b, 58)[0]
-    e_shnum = struct.unpack_from('<H', b, 60)[0]
-
-    phs = []
-    for i in range(e_phnum):
-        base = e_phoff + i * e_phentsize
-        p_type = struct.unpack_from('<I', b, base)[0]
-        if p_type != 1:
-            continue
-        p_offset = struct.unpack_from('<Q', b, base + 8)[0]
-        p_filesz = struct.unpack_from('<Q', b, base + 32)[0]
-        phs.append((i, base, p_offset, p_filesz))
-    if not phs:
-        return None
-    cum = 0
-    pads = []
-    for (_, __, off, filesz) in phs:
-        new_off = off + cum
-        pad = (PAGE - (new_off % PAGE)) % PAGE
-        pads.append(pad)
-        cum += pad
-    total_pad = cum
-    if total_pad == 0:
-        return None
-    last_off, last_filesz = phs[-1][2], phs[-1][3]
-    last_end = last_off + last_filesz
-    if last_end > len(b):
-        raise ValueError('segment extends past EOF')
-    trailer = b[last_end:]
+    # Rebuild by inserting padding at the original segment offsets. Every
+    # byte of the original file is retained, so gaps and non-PT_LOAD data
+    # (e.g. the section header table) keep their relative positions.
+    insertions.sort()
+    merged = []
+    for at, pad in insertions:
+        if merged and merged[-1][0] == at:
+            merged[-1] = (at, merged[-1][1] + pad)
+        else:
+            merged.append((at, pad))
 
     out = bytearray()
-    for (_, __, off, filesz), pad in zip(phs, pads):
-        pad_to(out, pad)
-        out.extend(b[off:off + filesz])
-    out.extend(trailer)
+    pos = 0
+    for at, pad in merged:
+        out += data[pos:at]
+        out += b'\x00' * pad
+        pos = at
+    out += data[pos:]
 
-    struct.pack_into('<Q', out, 32, e_phoff + total_pad)
-    struct.pack_into('<Q', out, 40, e_shoff + total_pad)
+    def shift_at(offset):
+        return sum(pad for at, pad in merged if at <= offset)
 
-    ph_shift = pads[0] if phs[0][2] == 0 else 0
-    for (i, base, off, _), pad in zip(phs, pads):
-        new_base = base + ph_shift
-        struct.pack_into('<Q', out, new_base + 8, off + (sum(pads[:i + 1]) - pad))
+    e_phoff = elf.e_phoff + shift_at(elf.e_phoff)
+    e_shoff = elf.e_shoff + shift_at(elf.e_shoff)
 
-    acc = 0
-    cum_pads = []
-    for idx, (_, __, off, _) in enumerate(phs):
-        cum_pads.append(acc)
-        acc += pads[idx]
+    # Update every program header, not only PT_LOAD: PT_DYNAMIC, PT_NOTE,
+    # PT_GNU_RELRO, PT_PHDR, ... must keep pointing at their real data.
+    for ph in phdrs:
+        base = ph['base'] + shift_at(ph['base'])
+        new_offset = ph['offset'] + shift_at(ph['offset'])
+        struct.pack_into(elf.fmt, out, base + elf.load_off, new_offset)
+        if ph['type'] == PT_LOAD:
+            struct.pack_into(elf.fmt, out, base + elf.p_align_off, max(ph['align'], PAGE))
 
-    sh_off = e_shoff + total_pad
-    for si in range(e_shnum):
-        ent = sh_off + si * e_shentsize
-        if ent + 32 > len(out):
+    struct.pack_into(elf.fmt, out, elf.e_phoff_off, e_phoff)
+    struct.pack_into(elf.fmt, out, elf.e_shoff_off, e_shoff)
+
+    # Keep section headers pointing at their (shifted) data.
+    for i in range(elf.e_shnum):
+        base = e_shoff + i * elf.e_shentsize
+        if base + elf.e_shentsize > len(out):
             break
-        sh_offset = struct.unpack_from('<Q', out, ent + 24)[0]
+        sh_type = struct.unpack_from('<I', out, base + 4)[0]
+        if sh_type == SHNOBITS:
+            continue
+        sh_offset = struct.unpack_from(elf.fmt, out, base + elf.sh_offset_off)[0]
         if sh_offset == 0:
             continue
-        add = 0
-        for idx, (_, __, off, _) in enumerate(phs):
-            if off <= sh_offset < off + phs[idx][3]:
-                add = cum_pads[idx]
-                break
-        else:
-            add = total_pad
-        struct.pack_into('<Q', out, ent + 24, sh_offset + add)
+        struct.pack_into(elf.fmt, out, base + elf.sh_offset_off, sh_offset + shift_at(sh_offset))
+
     return bytes(out)
 
 
-def align_elf32(b):
-    e_phoff = struct.unpack_from('<I', b, 28)[0]
-    e_phentsize = struct.unpack_from('<H', b, 42)[0]
-    e_phnum = struct.unpack_from('<H', b, 44)[0]
-    e_shoff = struct.unpack_from('<I', b, 32)[0]
-    e_shentsize = struct.unpack_from('<H', b, 46)[0]
-    e_shnum = struct.unpack_from('<H', b, 48)[0]
-    phs = []
-    for i in range(e_phnum):
-        base = e_phoff + i * e_phentsize
-        p_type = struct.unpack_from('<I', b, base)[0]
-        if p_type != 1:
-            continue
-        p_offset = struct.unpack_from('<I', b, base + 4)[0]
-        p_filesz = struct.unpack_from('<I', b, base + 16)[0]
-        phs.append((i, base, p_offset, p_filesz))
-    if not phs:
-        return None
-    cum = 0
-    pads = []
-    for (_, __, off, filesz) in phs:
-        new_off = off + cum
-        pad = (PAGE - (new_off % PAGE)) % PAGE
-        pads.append(pad)
-        cum += pad
-    total_pad = cum
-    if total_pad == 0:
-        return None
-    last_off, last_filesz = phs[-1][2], phs[-1][3]
-    last_end = last_off + last_filesz
-    if last_end > len(b):
-        raise ValueError('segment extends past EOF')
-    trailer = b[last_end:]
-    out = bytearray()
-    for (_, __, off, filesz), pad in zip(phs, pads):
-        pad_to(out, pad)
-        out.extend(b[off:off + filesz])
-    out.extend(trailer)
-    struct.pack_into('<I', out, 28, e_phoff + total_pad)
-    struct.pack_into('<I', out, 32, e_shoff + total_pad)
-    ph_shift = pads[0] if phs[0][2] == 0 else 0
-    for (i, base, off, _), pad in zip(phs, pads):
-        new_base = base + ph_shift
-        struct.pack_into('<I', out, new_base + 4, off + (sum(pads[:i + 1]) - pad))
-    acc = 0
-    cum_pads = []
-    for idx, (_, __, off, _) in enumerate(phs):
-        cum_pads.append(acc)
-        acc += pads[idx]
-    sh_off = e_shoff + total_pad
-    for si in range(e_shnum):
-        ent = sh_off + si * e_shentsize
-        if ent + 24 > len(out):
-            break
-        sh_offset = struct.unpack_from('<I', out, ent + 16)[0]
-        if sh_offset == 0:
-            continue
-        add = 0
-        for idx, (_, __, off, _) in enumerate(phs):
-            if off <= sh_offset < off + phs[idx][3]:
-                add = cum_pads[idx]
-                break
-        else:
-            add = total_pad
-        struct.pack_into('<I', out, ent + 16, sh_offset + add)
-    return bytes(out)
+def main():
+    if len(sys.argv) < 2:
+        print('usage: align-elf-16k.py <library.so> [output.so]', file=sys.stderr)
+        return 2
+    src = sys.argv[1]
+    dst = sys.argv[2] if len(sys.argv) > 2 else src
+    with open(src, 'rb') as f:
+        data = f.read()
+    try:
+        result = align(data)
+    except ValueError as e:
+        print('SKIP: %s' % e)
+        return 0
+    if result is None:
+        print('ALREADY_ALIGNED')
+        return 0
+    with open(dst, 'wb') as f:
+        f.write(result)
+    print('ALIGNED')
+    return 0
 
 
 if __name__ == '__main__':
-    src = sys.argv[1]
-    dst = sys.argv[2] if len(sys.argv) > 2 else None
-    with open(src, 'rb') as f:
-        data = f.read()
-    res = align_file(data)
-    if res is None:
-        print('ALREADY_ALIGNED')
-        sys.exit(0)
-    if dst:
-        with open(dst, 'wb') as f:
-            f.write(res)
-    else:
-        with open(src, 'wb') as f:
-            f.write(res)
-    print('ALIGNED')
+    sys.exit(main())

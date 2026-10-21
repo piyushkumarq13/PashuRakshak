@@ -32,6 +32,11 @@ object SyncStatusHolder {
         _status.update { it.copy(isSyncing = syncing) }
     }
 
+    /** Clears queue/status state on sign-out. */
+    fun reset() {
+        _status.value = SyncUiStatus()
+    }
+
     /** Called by SyncWorker at the end of every cycle with the remaining queue size. */
     fun onCycleCompleted(remaining: Int) {
         _status.update {

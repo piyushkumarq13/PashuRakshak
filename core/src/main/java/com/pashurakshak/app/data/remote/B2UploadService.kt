@@ -55,6 +55,14 @@ class B2UploadService(
     /** Cached download-authorization token for private-bucket image display. */
     private var cachedDownloadToken: String? = null
     private var cachedDownloadTokenExpiryMs: Long = 0
+    private var downloadBaseUrl: String? = null
+
+    /** Clears cached B2 authorization after logout / account switch. */
+    fun clearCachedAuth() {
+        cachedDownloadToken = null
+        cachedDownloadTokenExpiryMs = 0L
+        downloadBaseUrl = null
+    }
 
     /**
      * Uploads every report photo that has a local file but no remote URL yet and
@@ -69,35 +77,69 @@ class B2UploadService(
             )
         }
 
-        val remotes = MutableList<String?>(locals.size) { report.photoRemoteUrls.getOrNull(it) }
-        var last: UploadResult? = null
-        var uploadedAny = false
+        val remotes = report.photoRemoteUrls.toMutableList()
+        while (remotes.size < locals.size) remotes.add(null)
 
-        for (index in locals.indices) {
-            if (!remotes[index].isNullOrBlank()) continue
-            val file = File(locals[index])
-            if (!file.exists()) {
-                last = UploadResult.Skipped
-                continue
-            }
+        // Drop only entries that can neither be uploaded nor displayed (missing
+        // file and no remote URL). Entries with a remote URL keep their local
+        // path so the newline-aligned indexes stay intact.
+        val keptLocals = mutableListOf<String>()
+        val keptRemotes = mutableListOf<String?>()
+        locals.forEachIndexed { index, local ->
+            val remote = remotes.getOrNull(index)
+            if (remote.isNullOrBlank() && !File(local).exists()) return@forEachIndexed
+            keptLocals.add(local)
+            keptRemotes.add(remote)
+        }
+
+        if (keptLocals.isEmpty()) {
+            reportRepository.update(report.copy(photoLocalPath = "", photoRemoteUrl = ""))
+            return UploadResult.Skipped
+        }
+
+        var uploadedAny = false
+        var failedAny = false
+        var skippedAny = false
+        var lastFailure: UploadResult.Failure? = null
+
+        for (index in keptLocals.indices) {
+            if (!keptRemotes[index].isNullOrBlank()) continue
+            val file = File(keptLocals[index])
             val remoteName = "reports/${report.id}/${file.name}"
             when (val result = uploadFile(file, remoteName)) {
                 is UploadResult.Success -> {
-                    remotes[index] = result.fileUrl
-                    last = result
+                    keptRemotes[index] = result.fileUrl
                     uploadedAny = true
                 }
 
-                else -> last = result
+                is UploadResult.Failure -> {
+                    failedAny = true
+                    lastFailure = result
+                }
+
+                UploadResult.Skipped -> skippedAny = true
             }
         }
 
-        if (uploadedAny) {
+        if (uploadedAny || keptLocals.size != locals.size) {
             reportRepository.update(
-                report.copy(photoRemoteUrl = remotes.joinToString(SymptomReport.NEWLINE_SEPARATOR))
+                report.copy(
+                    photoLocalPath = SymptomReport.joinPhotos(keptLocals),
+                    photoRemoteUrl = keptRemotes.joinToString(SymptomReport.NEWLINE_SEPARATOR) {
+                        it.orEmpty()
+                    },
+                ),
             )
         }
-        return last ?: UploadResult.Skipped
+
+        return when {
+            failedAny -> lastFailure ?: UploadResult.Failure("Photo upload failed")
+            keptRemotes.any { it.isNullOrBlank() } -> UploadResult.Skipped
+            uploadedAny -> keptRemotes.firstOrNull { !it.isNullOrBlank() }
+                ?.let { UploadResult.Success(it) } ?: UploadResult.Skipped
+            skippedAny -> UploadResult.Skipped
+            else -> UploadResult.Skipped
+        }
     }
 
     /** Kept for the manual B2 test screen — uploads every photo of one report. */
@@ -125,15 +167,18 @@ class B2UploadService(
     /** Single-file upload with retry/backoff — public so the manual test screen can call it. */
     suspend fun uploadFile(file: File, remoteName: String): UploadResult =
         withContext(Dispatchers.IO) {
+            if (!file.exists() || file.length() <= 0L) return@withContext UploadResult.Skipped
+            if (file.length() > MAX_FILE_BYTES) {
+                return@withContext UploadResult.Failure("Photo is too large to upload")
+            }
             executeWithRetry {
-                val bytes = file.readBytes()
                 val contentType = when {
                     remoteName.endsWith(".png", ignoreCase = true) -> "image/png"
                     else -> "image/jpeg"
                 }
                 val auth = authorize()
                 val upload = getUploadUrl(auth)
-                val fileUrl = postFile(upload, remoteName, contentType, bytes, auth)
+                val fileUrl = postFile(upload, remoteName, contentType, file, auth)
                 UploadResult.Success(fileUrl)
             }
         }
@@ -152,7 +197,21 @@ class B2UploadService(
     suspend fun withAuth(fileUrl: String): String {
         if (fileUrl.isBlank()) return fileUrl
         val token = getDownloadAuthToken() ?: return fileUrl
-        return if (fileUrl.contains("Authorization=")) fileUrl else "$fileUrl?Authorization=${URLEncoder.encode(token, "UTF-8")}"
+        if (!isOwnedB2ReportUrl(fileUrl)) return fileUrl
+        return if (fileUrl.contains("Authorization=")) fileUrl
+        else "$fileUrl?Authorization=${URLEncoder.encode(token, "UTF-8")}"
+    }
+
+    /**
+     * Never attach a B2 download token to a URL supplied by the backend unless it
+     * points at this app's own bucket under the reports/ prefix. Otherwise a
+     * tampered report row could exfiltrate the token to an attacker's host.
+     */
+    private fun isOwnedB2ReportUrl(fileUrl: String): Boolean {
+        val base = downloadBaseUrl?.trimEnd('/') ?: return false
+        if (bucketName.isBlank()) return false
+        val allowedPrefix = "$base/file/${urlEncodePath(bucketName)}/reports/"
+        return fileUrl.startsWith(allowedPrefix)
     }
 
     /** Returns the cached download authorization token, fetching if needed. */
@@ -165,6 +224,7 @@ class B2UploadService(
         try {
             val auth = authorize()
             val token = requestDownloadAuth(auth)
+            downloadBaseUrl = auth.downloadUrl.trimEnd('/')
             cachedDownloadToken = token
             cachedDownloadTokenExpiryMs = now + TOKEN_CACHE_DURATION_MS
             token
@@ -237,20 +297,22 @@ class B2UploadService(
         uploadTarget: UploadTarget,
         remoteName: String,
         contentType: String,
-        bytes: ByteArray,
+        file: File,
         auth: Auth,
     ): String {
         val connection = open(uploadTarget.url, "POST")
         connection.setRequestProperty("Authorization", uploadTarget.token)
         connection.setRequestProperty("Content-Type", contentType)
         connection.setRequestProperty("X-Bz-File-Name", urlEncodePath(remoteName))
-        connection.setRequestProperty("X-Bz-Content-Sha1", sha1Hex(bytes))
-        connection.doOutput = true
-        connection.outputStream.use { it.write(bytes) }
+        connection.setRequestProperty("X-Bz-Content-Sha1", sha1Hex(file))
+        connection.setDoOutput(true)
+        connection.setFixedLengthStreamingMode(file.length())
+        connection.outputStream.use { output ->
+            file.inputStream().use { input -> input.copyTo(output) }
+        }
         val json = readJson(connection)
         val fileName = json.getString("fileName")
-        val pathSegments = fileName.split("/")
-        val encodedPath = pathSegments.joinToString("/") { urlEncodePath(it) }
+        val encodedPath = fileName.split("/").joinToString("/") { urlEncodePath(it) }
         return "${auth.downloadUrl}/file/$bucketName/$encodedPath"
     }
 
@@ -305,10 +367,18 @@ class B2UploadService(
 
     private fun isNoNetwork(error: IOException): Boolean = isNoNetworkStatic(error)
 
-    private fun sha1Hex(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-1")
-            .digest(bytes)
-            .joinToString("") { "%02x".format(it) }
+    private fun sha1Hex(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-1")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private class B2HttpException(val code: Int, message: String) : IOException(message)
 
@@ -316,6 +386,7 @@ class B2UploadService(
         const val MAX_ATTEMPTS = 3
         const val RETRY_BASE_DELAY_MS = 1_000L
         private const val TOKEN_CACHE_DURATION_MS = 12 * 60 * 60 * 1000L // 12 hours
+        private const val MAX_FILE_BYTES = 20L * 1024 * 1024
 
         /** Percent-encode each path segment; letters/digits and -._~ are kept as-is. */
         @JvmStatic

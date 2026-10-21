@@ -44,8 +44,8 @@ fun VetBottomBar(navController: NavHostController) {
                 label = "Home",
             )
             BottomBarTab(
-                selected = currentRoute == Screen.VetCaseQueue.route,
-                onClick = { navController.navigateToVetTab(Screen.VetCaseQueue.route) },
+                selected = currentRoute?.startsWith(Screen.VetCaseQueue.route) == true,
+                onClick = { navController.navigateToVetTab("${Screen.VetCaseQueue.route}?filter=ongoing") },
                 icon = Icons.AutoMirrored.Filled.Assignment,
                 label = "Cases",
             )
@@ -60,7 +60,13 @@ fun VetBottomBar(navController: NavHostController) {
 }
 
 private fun NavHostController.navigateToVetTab(route: String) {
-    if (currentBackStackEntry?.destination?.route == route) return
+    val current = currentBackStackEntry?.destination?.route ?: ""
+    if (current == route) return
+    val currentBase = current.substringBefore('?')
+    val targetBase = route.substringBefore('?')
+    if (currentBase == targetBase && currentBase == Screen.VetCaseQueue.route &&
+        route.endsWith("ongoing") && current.contains("ongoing")
+    ) return
     navigate(route) {
         popUpTo(Screen.VetHome.route) {
             saveState = true

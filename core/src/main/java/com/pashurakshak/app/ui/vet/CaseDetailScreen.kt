@@ -117,7 +117,7 @@ fun CaseDetailScreen(
             val activity = context as android.app.Activity
             val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
             intent.putExtra("MODE", IntentIntegrator.QR_CODE)
-            intent.putExtra("PROMPT_MESSAGE", "Scan animal QR to verify visit")
+            intent.putExtra("PROMPT_MESSAGE", "Scan the report QR to verify this visit")
             barcodeLauncher.launch(intent)
         }
     }
@@ -277,6 +277,23 @@ fun CaseDetailScreen(
                         }
                     }
 
+                    FadeInContent(delayMillis = 60) {
+                        DetailSection(title = "Vet assessment") {
+                            if (report.vetAssessment.isNullOrBlank()) {
+                                Text(
+                                    text = "Not recorded yet",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                Text(
+                                    text = report.vetAssessment,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                        }
+                    }
+
                     FadeInContent(delayMillis = 80) {
                         DetailSection(title = "Details") {
                             DetailRow("Reported by", report.farmerId)
@@ -315,12 +332,12 @@ fun CaseDetailScreen(
                     if (state.canMarkExamined) {
                         FadeInContent(delayMillis = 140) {
                             PrimaryButton(
-                                text = "Scan QR to Verify Visit",
+                                text = "Scan Report QR to Verify Visit",
                                 onClick = {
                                     val activity = context as android.app.Activity
                                     val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
                                     intent.putExtra("MODE", IntentIntegrator.QR_CODE)
-                                    intent.putExtra("PROMPT_MESSAGE", "Scan animal QR to verify visit")
+                                    intent.putExtra("PROMPT_MESSAGE", "Scan the report QR to verify this visit")
                                     barcodeLauncher.launch(intent)
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -411,11 +428,9 @@ fun CaseDetailScreen(
                         PrimaryButton(
                             text = "Mark Examined",
                             onClick = {
-                                if (state.qrVerified) {
-                                    showFieldCheck = true
-                                } else {
-                                    viewModel.blockUntilQrVerified()
-                                }
+                                // The field-check dialog is available even without a QR
+                                // scan; such cases are persisted as "not QR verified".
+                                showFieldCheck = true
                             },
                             modifier = Modifier.fillMaxWidth(),
                         )

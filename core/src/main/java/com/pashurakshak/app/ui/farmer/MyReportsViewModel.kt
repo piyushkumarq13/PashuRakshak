@@ -19,6 +19,7 @@ data class MyReportItem(
     val animal: Animal?,
     val vetVisited: Boolean,
     val isResolved: Boolean,
+    val verifiedVisit: Boolean = false,
 )
 
 data class MyReportsUiState(
@@ -71,7 +72,8 @@ class MyReportsViewModel(
                     status == ReportStatus.CONFIRMED ||
                     status == ReportStatus.RESOLVED
                 val isResolved = status == ReportStatus.RESOLVED
-                MyReportItem(report = report, animal = animal, vetVisited = vetVisited, isResolved = isResolved)
+                val verifiedVisit = report.qrVerified
+                MyReportItem(report = report, animal = animal, vetVisited = vetVisited, isResolved = isResolved, verifiedVisit = verifiedVisit)
             }
     }
 }

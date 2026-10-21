@@ -36,6 +36,12 @@ data class SymptomReport(
     val vetAssessment: String? = null,
     val qrCodeId: String = "QR-" + UUID.randomUUID().toString().uppercase(),
     val diseaseDescription: String? = null,
+    // Server is the source of truth: only a successful visits.js match sets
+    // these, and the value is mirrored locally after pull. Never written from
+    // the report push payload.
+    val qrVerified: Boolean = false,
+    val verifiedAt: Long? = null,
+    val verifiedBy: String? = null,
 ) {
     /**
      * `photo_local_path` / `photo_remote_url` store up to MAX_PHOTOS entries

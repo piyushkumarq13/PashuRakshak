@@ -81,14 +81,25 @@ npm run build
 
 Outputs to `dist/`.
 
-## Deploy
+## Deploy to Vercel (separate project)
 
-Same as any Vite static site (Vercel / Netlify / Render):
+`vercel.json` is already included, so the app can be deployed as its own Vercel
+project. Do **not** deploy it from the repository root — each web app is built
+independently.
 
-- Build: `npm run build`
-- Output: `dist`
-- Set `VITE_*` env vars, then add the deployed URL to the backend's
-  `CORS_ALLOWED_ORIGINS`.
+1. Vercel → **Add New → Project** → import this GitHub repo.
+2. Set **Root Directory** to `gov-portal` (important).
+3. Framework preset: **Vite** (auto-detected).
+   Build command: `npm run build` · Output directory: `dist`.
+4. Add environment variables for **Production** and **Preview**:
+   - `VITE_API_BASE_URL` = your backend URL (no trailing slash), e.g.
+     `https://pashurakshak-ilol.onrender.com`
+   - `VITE_APP_API_KEY` = the key issued when this app was registered
+5. Deploy, then add the Vercel URL to the backend's `CORS_ALLOWED_ORIGINS`
+   (or keep `*` while previews change).
+6. Redeploy whenever a `VITE_*` value changes — Vite bakes them into the build.
+
+Local build check: `npm run build` → outputs to `dist/`.
 
 ## Project structure
 

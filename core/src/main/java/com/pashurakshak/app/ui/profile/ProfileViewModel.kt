@@ -219,8 +219,11 @@ class ProfileViewModel(
     }
 
     fun logout() {
-        SessionManager.logout()
-        _uiState.update { it.copy(loggedOut = true) }
+        viewModelScope.launch {
+            ServiceLocator.clearLocalData()
+            SessionManager.logout()
+            _uiState.update { it.copy(loggedOut = true) }
+        }
     }
 
     fun clearNotice() {

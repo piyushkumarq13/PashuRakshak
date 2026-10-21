@@ -21,8 +21,8 @@ class ReportRepository(private val db: TursoClient) {
             INSERT INTO symptom_reports (
                 id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
                 latitude, longitude, risk_score, risk_breakdown, status, synced, created_at,
-                assigned_vet_id, ai_risk_category, vet_assessment, village, qr_code_id, disease_description
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                assigned_vet_id, ai_risk_category, vet_assessment, village, qr_code_id, disease_description, qr_verified, verified_at, verified_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             report.id,
             report.animalId,
@@ -43,6 +43,9 @@ class ReportRepository(private val db: TursoClient) {
             report.village ?: "",
             report.qrCodeId,
             report.diseaseDescription ?: "",
+            if (report.qrVerified) 1 else 0,
+            report.verifiedAt,
+            report.verifiedBy,
         )
     }
 
@@ -93,7 +96,7 @@ class ReportRepository(private val db: TursoClient) {
                 animal_id = ?, farmer_id = ?, symptoms = ?, photo_local_path = ?, photo_remote_url = ?,
                 latitude = ?, longitude = ?, risk_score = ?, risk_breakdown = ?, status = ?,
                 synced = ?, created_at = ?, assigned_vet_id = ?, ai_risk_category = ?,
-                vet_assessment = ?, village = ?, qr_code_id = ?, disease_description = ?
+                vet_assessment = ?, village = ?, qr_code_id = ?, disease_description = ?, qr_verified = ?, verified_at = ?, verified_by = ?
             WHERE id = ?
             """.trimIndent(),
             report.animalId,
@@ -114,6 +117,9 @@ class ReportRepository(private val db: TursoClient) {
             report.village ?: "",
             report.qrCodeId,
             report.diseaseDescription ?: "",
+            if (report.qrVerified) 1 else 0,
+            report.verifiedAt,
+            report.verifiedBy,
             report.id,
         )
     }
@@ -122,11 +128,56 @@ class ReportRepository(private val db: TursoClient) {
         db.execute("DELETE FROM symptom_reports WHERE id = ?", id)
     }
 
+    suspend fun insertVisitVerification(
+        reportId: String,
+        scannedQrCodeId: String,
+        latitude: Double,
+        longitude: Double,
+        assessment: String,
+        matched: Int,
+    ) {
+        db.execute(
+            """
+            INSERT INTO pashu_visit_verifications (id, report_id, scanned_qr_code_id, latitude, longitude, assessment, matched, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            java.util.UUID.randomUUID().toString(),
+            reportId,
+            scannedQrCodeId,
+            latitude,
+            longitude,
+            assessment,
+            matched,
+            System.currentTimeMillis(),
+        )
+    }
+
+    /** True only when a verification row with matched = 1 exists for this report. */
+    suspend fun hasVerifiedVisitRow(reportId: String): Boolean =
+        db.query(
+            "SELECT 1 FROM pashu_visit_verifications WHERE report_id = ? AND matched = 1 LIMIT 1",
+            reportId,
+        ) { it }.isNotEmpty()
+
     /** Upsert from remote pull — keeps local photo path and village if the row already exists. */
     suspend fun upsertFromRemote(report: SymptomReport) {
         val existing = getById(report.id)
         if (existing == null) {
             insert(report)
+        } else if (!existing.synced) {
+            // The local row has its own unpushed changes (e.g. the vet marked it
+            // EXAMINED) — do not let a stale remote row overwrite them. The
+            // pending push worker will reconcile both sides on its next cycle.
+            update(
+                existing.copy(
+                    photoRemoteUrl = report.photoRemoteUrl ?: existing.photoRemoteUrl,
+                    // The server is the source of truth for QR verification even
+                    // when the local row has its own pending push changes.
+                    qrVerified = report.qrVerified,
+                    verifiedAt = report.verifiedAt,
+                    verifiedBy = report.verifiedBy,
+                ),
+            )
         } else {
             update(
                 report.copy(
@@ -166,6 +217,9 @@ class ReportRepository(private val db: TursoClient) {
         village = stringOrNull(16),
         qrCodeId = stringOrNull(17).orEmpty(),
         diseaseDescription = stringOrNull(18)?.takeIf { it.isNotBlank() },
+        qrVerified = int(19) != 0,
+        verifiedAt = (this[20] as? Number)?.toLong(),
+        verifiedBy = stringOrNull(21),
     )
 
     private fun symptomsToJson(symptoms: List<String>): String =

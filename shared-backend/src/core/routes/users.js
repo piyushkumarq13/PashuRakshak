@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { db } from '../../db/client.js';
 import { verifyAppKey } from '../middleware/verifyAppKey.js';
-import { verifySession } from '../middleware/verifySession.js';
+import { requireRole, verifySession } from '../middleware/verifySession.js';
 
 const router = Router();
 
@@ -21,58 +20,64 @@ function publicUser(row) {
 /**
  * POST /api/v1/core/users
  * Protected by verifyAppKey + verifySession.
- * Accepts { phone, role, name?, email?, preferredLanguage? }.
- * Upserts into users keyed by phone. Returns the full user row (minus secrets).
+ * Updates the *authenticated* user's profile only.
+ *
+ * The old implementation upserted by an arbitrary phone/role from the body,
+ * which let any signed-in account overwrite or create another account. The
+ * session is now authoritative; clients may only send their own phone/role.
  */
-router.post('/users', verifyAppKey, verifySession, async (req, res) => {
+router.post('/users', verifyAppKey, verifySession, requireRole('farmer', 'vet'), async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'invalid_session', message: 'Session has no user id.' });
+  }
+
   const phone = str(req.body?.phone);
   const role = str(req.body?.role);
   const name = str(req.body?.name);
   const email = str(req.body?.email);
   const preferredLanguage = str(req.body?.preferredLanguage);
 
-  if (!phone || !role) {
-    return res.status(400).json({
-      error: 'invalid_body',
-      message: 'Body must include non-empty "phone" and "role" strings.',
-    });
-  }
-
   const now = Date.now();
 
   try {
     const existing = await db.execute({
-      sql: 'SELECT id FROM users WHERE phone = ?',
-      args: [phone],
+      sql: 'SELECT id, phone, role FROM users WHERE id = ?',
+      args: [req.userId],
     });
+    const current = existing.rows[0];
+    if (!current) {
+      return res.status(404).json({ error: 'user_not_found', message: 'Signed-in user no longer exists.' });
+    }
 
-    let userId;
-    if (existing.rows.length > 0) {
-      userId = existing.rows[0].id;
-      await db.execute({
-        sql: `UPDATE users SET role = ?, name = ?, email = ?, preferred_language = ?, updated_at = ? WHERE phone = ?`,
-        args: [role, name, email, preferredLanguage, now, phone],
+    if (phone && phone !== current.phone) {
+      return res.status(403).json({
+        error: 'phone_mismatch',
+        message: 'You can only update the account tied to this session.',
       });
-    } else {
-      userId = randomUUID();
-      await db.execute({
-        sql: `INSERT INTO users (id, phone, role, name, email, preferred_language, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [userId, phone, role, name, email, preferredLanguage, now, now],
+    }
+    if (role && role !== current.role) {
+      return res.status(403).json({
+        error: 'role_mismatch',
+        message: 'A session cannot change its own role.',
       });
     }
 
+    await db.execute({
+      sql: `UPDATE users SET name = ?, email = ?, preferred_language = ?, updated_at = ? WHERE id = ?`,
+      args: [name, email, preferredLanguage, now, req.userId],
+    });
+
     const row = await db.execute({
       sql: 'SELECT * FROM users WHERE id = ?',
-      args: [userId],
+      args: [req.userId],
     });
 
     return res.status(200).json({ user: publicUser(row.rows[0]) });
   } catch (error) {
-    console.error('[core/users] upsert failed:', error);
+    console.error('[core/users] update failed:', error);
     return res.status(500).json({
       error: 'user_upsert_failed',
-      message: 'Could not create or update the user.',
+      message: 'Could not update the user.',
     });
   }
 });

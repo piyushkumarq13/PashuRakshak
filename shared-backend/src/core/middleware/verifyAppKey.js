@@ -29,6 +29,9 @@ export async function verifyAppKey(req, res, next) {
     }
 
     req.appId = row.id;
+    // Also expose the requesting app's API key: it is the HMAC secret used to
+    // sign/verify QR payloads (same key the Android client embeds).
+    req.appApiKey = apiKey;
     return next();
   } catch (error) {
     console.error('[verifyAppKey] lookup failed:', error);

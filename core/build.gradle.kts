@@ -34,6 +34,7 @@ android {
         minSdk {
             version = release(24)
         }
+        consumerProguardFiles("proguard-rules.pro")
 
         buildConfigField("String", "B2_APPLICATION_KEY_ID", "\"${localProp("B2_APPLICATION_KEY_ID")}\"")
         buildConfigField("String", "B2_APPLICATION_KEY", "\"${localProp("B2_APPLICATION_KEY")}\"")

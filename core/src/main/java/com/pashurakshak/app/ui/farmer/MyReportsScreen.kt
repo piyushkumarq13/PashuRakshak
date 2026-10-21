@@ -55,6 +55,7 @@ import com.pashurakshak.app.ui.vet.riskLevelFor
 fun MyReportsScreen(
     onReportClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    filter: String = "all",
     viewModel: MyReportsViewModel = viewModel {
         MyReportsViewModel(
             reportRepository = ServiceLocator.reportRepository,
@@ -65,6 +66,17 @@ fun MyReportsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var qrDialogReport by remember { mutableStateOf<MyReportItem?>(null) }
+
+    val filteredItems = remember(state.items, filter) {
+        when (filter) {
+            "ongoing" -> state.items.filter {
+                it.report.status == com.pashurakshak.app.data.local.ReportStatus.REPORTED ||
+                    it.report.status == com.pashurakshak.app.data.local.ReportStatus.VET_ASSIGNED
+            }
+            "examined" -> state.items.filter { it.vetVisited }
+            else -> state.items
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -80,11 +92,19 @@ fun MyReportsScreen(
                 .padding(innerPadding),
         ) {
             ScreenHeader(
-                title = "My Reports",
-                subtitle = if (state.items.isNotEmpty()) {
-                    "${state.items.size} report${if (state.items.size == 1) "" else "s"}"
-                } else {
-                    "AI risk + vet visit history"
+                title = when (filter) {
+                    "ongoing" -> "Active Cases"
+                    "examined" -> "Examined Cases"
+                    else -> "My Reports"
+                },
+                subtitle = when (filter) {
+                    "ongoing" -> "Out for triage: ${filteredItems.size} ongoing"
+                    "examined" -> "${filteredItems.size} case${if (filteredItems.size == 1) "" else "s"} examined by a vet"
+                    else -> if (state.items.isNotEmpty()) {
+                        "${state.items.size} report${if (state.items.size == 1) "" else "s"}"
+                    } else {
+                        "AI risk + vet visit history"
+                    }
                 },
             )
             state.error?.let { error ->
@@ -96,10 +116,18 @@ fun MyReportsScreen(
             }
             when {
                 state.isLoading -> LoadingState()
-                state.items.isEmpty() -> EmptyState(
+                filteredItems.isEmpty() -> EmptyState(
                     icon = Icons.AutoMirrored.Filled.ReceiptLong,
-                    title = "No reports yet",
-                    message = "Report a sick animal from the Report tab to get AI risk scoring and vet support.",
+                    title = when (filter) {
+                        "ongoing" -> "No active cases"
+                        "examined" -> "No examined cases"
+                        else -> "No reports yet"
+                    },
+                    message = when (filter) {
+                        "ongoing" -> "Your ongoing reports will appear here until a vet examines them."
+                        "examined" -> "Reports a vet has examined will appear here."
+                        else -> "Report a sick animal from the Report tab to get AI risk scoring and vet support."
+                    },
                 )
 
                 else -> {
@@ -115,7 +143,7 @@ fun MyReportsScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
-                        items(state.items, key = { it.report.id }) { item ->
+                        items(filteredItems, key = { it.report.id }) { item ->
                             ReportCard(
                                 item = item,
                                 onReportClick = onReportClick,
@@ -142,7 +170,7 @@ fun ReportQrDialog(item: MyReportItem, onDismiss: () -> Unit) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             runCatching {
                 com.journeyapps.barcodescanner.BarcodeEncoder().encodeBitmap(
-                    item.report.qrCodeId,
+                    com.pashurakshak.app.data.remote.QrPayloads.sign(item.report.qrCodeId),
                     com.google.zxing.BarcodeFormat.QR_CODE,
                     640,
                     640,
@@ -233,6 +261,7 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit, onSh
                     container = levelColor.copy(alpha = 0.14f),
                     content = levelColor,
                 )
+                if (!item.verifiedVisit) {
                 androidx.compose.material3.IconButton(
                     onClick = onShowQr,
                     modifier = Modifier.size(36.dp),
@@ -244,6 +273,7 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit, onSh
                         modifier = Modifier.size(20.dp),
                     )
                 }
+                }
             }
 
             Row(
@@ -253,8 +283,8 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit, onSh
             ) {
                 val statusChip = when {
                     item.isResolved -> "Resolved"
-                    item.vetVisited -> "Vet visited · ${prettifyStatus(item.report.status.dbValue)}"
-                    else -> "Awaiting vet · ${prettifyStatus(item.report.status.dbValue)}"
+                    item.vetVisited -> "Vet visited - ${prettifyStatus(item.report.status.dbValue)}"
+                    else -> "Awaiting vet - ${prettifyStatus(item.report.status.dbValue)}"
                 }
                 StatusPill(
                     text = statusChip,
@@ -281,6 +311,32 @@ private fun ReportCard(item: MyReportItem, onReportClick: (String) -> Unit, onSh
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            if (item.verifiedVisit) {
+                StatusPill(
+                    text = "Case verified",
+                    container = AppColors.SoftGreen,
+                    content = AppColors.Healthy,
+                )
+                Text(
+                    text = "QR code of this case is verified — no longer needed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (item.vetVisited) {
+                StatusPill(
+                    text = "Examined (not QR verified)",
+                    container = AppColors.SoftAmber,
+                    content = AppColors.Warning,
+                )
+            }
+            if (!item.report.vetAssessment.isNullOrBlank()) {
+                Text(
+                    text = "Vet note: ${item.report.vetAssessment}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
 
             if (item.report.displayPhotoCount > 0) {
                 Spacer(modifier = Modifier.height(AppSpacing.XS))

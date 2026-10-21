@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../../../db/client.js';
+import { appendAuditLog } from './auditLog.js';
 import { sendPushToUid } from '../../../core/services/push.js';
 
 /**
@@ -177,6 +178,14 @@ export async function categorizeAndAssign(report, appId) {
     await db.execute({
       sql: 'UPDATE pashu_symptom_reports SET assigned_vet_id = ? WHERE id = ?',
       args: [vetUserId, report.id],
+    });
+
+    await appendAuditLog(db, {
+      actor: 'system',
+      action: 'vet_assigned',
+      entityType: 'report',
+      entityId: report.id,
+      payload: { vetUserId, village, category },
     });
 
     const alertId = randomUUID();

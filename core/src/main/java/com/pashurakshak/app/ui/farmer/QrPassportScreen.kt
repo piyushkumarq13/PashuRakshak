@@ -133,7 +133,7 @@ fun QrPassportScreen(
                     value = withContext(Dispatchers.Default) {
                         runCatching {
                             BarcodeEncoder().encodeBitmap(
-                                animal.qrCodeId,
+                                com.pashurakshak.app.data.remote.QrPayloads.sign(animal.qrCodeId),
                                 BarcodeFormat.QR_CODE,
                                 640,
                                 640,

@@ -12,6 +12,11 @@ import com.pashurakshak.app.data.local.TursoClient
 import com.pashurakshak.app.data.remote.AiRiskApi
 import com.pashurakshak.app.data.remote.B2UploadService
 import com.pashurakshak.app.data.remote.ReportPushApi
+import com.pashurakshak.app.data.sync.SyncScheduler
+import com.pashurakshak.app.data.sync.SyncStatusHolder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 object ServiceLocator {
 
@@ -38,4 +43,17 @@ object ServiceLocator {
     val reportPushApi: ReportPushApi by lazy { ReportPushApi() }
     val aiRiskApi: AiRiskApi by lazy { AiRiskApi() }
     val authRepository: AuthRepository by lazy { AuthRepository(database) }
+
+    /**
+     * Removes all per-user local state after sign-out so a different account can
+     * never read the previous user's animals, reports, photos or cached tokens.
+     */
+    suspend fun clearLocalData() = withContext(Dispatchers.IO) {
+        runCatching { SyncScheduler.cancel(appContext) }
+        runCatching { database.closeAndDelete() }
+        runCatching { b2UploadService.clearCachedAuth() }
+        runCatching { File(appContext.filesDir, "photos").deleteRecursively() }
+        runCatching { File(appContext.cacheDir, "image_cache").deleteRecursively() }
+        SyncStatusHolder.reset()
+    }
 }

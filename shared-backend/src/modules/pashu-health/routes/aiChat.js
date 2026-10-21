@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
 import { verifyAppKey } from '../../../core/middleware/verifyAppKey.js';
-import { verifySession } from '../../../core/middleware/verifySession.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
 import { generateAdvisory, continueConversation } from '../services/aiAdvisory.js';
 
 const router = Router();
@@ -18,7 +18,7 @@ function str(value) {
  * Accepts { message }. Looks up the farmer's preferred_language,
  * calls continueConversation. Returns { reply }.
  */
-router.post('/:id/chat', verifyAppKey, verifySession, async (req, res) => {
+router.post('/:id/chat', verifyAppKey, verifySession, requireRole('farmer'), async (req, res) => {
   const reportId = req.params.id;
   const userId = req.userId;
   const message = str(req.body?.message);
@@ -53,6 +53,9 @@ router.post('/:id/chat', verifyAppKey, verifySession, async (req, res) => {
     }
 
     const farmerId = reportResult.rows[0].farmer_id;
+    if (farmerId !== req.userId) {
+      return res.status(404).json({ error: 'not_found', message: 'Report not found.' });
+    }
 
     const reply = await continueConversation(reportId, farmerId, message, farmerPreferredLanguage);
 
@@ -72,10 +75,18 @@ router.post('/:id/chat', verifyAppKey, verifySession, async (req, res) => {
  * for display, as { messages: [{ role, content }, ...] }.
  * Returns { messages: [] } when no conversation exists yet.
  */
-router.get('/:id/chat', verifySession, async (req, res) => {
+router.get('/:id/chat', verifySession, requireRole('farmer'), async (req, res) => {
   const reportId = req.params.id;
 
   try {
+    const owner = await db.execute({
+      sql: 'SELECT farmer_id FROM pashu_symptom_reports WHERE id = ?',
+      args: [reportId],
+    });
+    if (owner.rows.length === 0 || owner.rows[0].farmer_id !== req.userId) {
+      return res.status(404).json({ error: 'not_found', message: 'Report not found.' });
+    }
+
     const result = await db.execute({
       sql: 'SELECT * FROM pashu_ai_conversations WHERE report_id = ?',
       args: [reportId],

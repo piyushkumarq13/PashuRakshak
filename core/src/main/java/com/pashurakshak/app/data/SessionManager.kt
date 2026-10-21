@@ -1,7 +1,8 @@
 package com.pashurakshak.app.data
 
 import android.content.Context
-import android.content.SharedPreferences
+import android.util.Base64
+import org.json.JSONObject
 
 /**
  * Login session backed by the shared-backend (email OTP + PIN/password).
@@ -33,7 +34,18 @@ object SessionManager {
 
     private const val VET_PACKAGE = "com.pashurakshak.vet"
 
-    private var prefs: SharedPreferences? = null
+    private var prefs: SecureSessionPreferences? = null
+
+    /** Parsed backend token expiry (epoch millis); 0 means unknown. */
+    private var tokenExpiresAtMs: Long = 0L
+
+    /**
+     * Set when an expired/invalid session was discarded at startup, so the next
+     * successful login wipes the previous user's local DB/photos before use.
+     */
+    @Volatile
+    var needsLocalDataWipe: Boolean = false
+        private set
 
     /** Role of this install — set once from the applicationId at startup. */
     var appRole: Role = Role.FARMER
@@ -74,7 +86,15 @@ object SessionManager {
         private set
 
     val isLoggedIn: Boolean
-        get() = role != null && uid != null && sessionToken != null
+        get() = role != null &&
+            uid != null &&
+            sessionToken != null &&
+            (tokenExpiresAtMs == 0L || System.currentTimeMillis() < tokenExpiresAtMs)
+
+    val isSessionExpired: Boolean
+        get() = sessionToken != null &&
+            tokenExpiresAtMs > 0L &&
+            System.currentTimeMillis() >= tokenExpiresAtMs
 
     val farmerId: String
         get() = uid ?: "anonymous-farmer"
@@ -83,7 +103,7 @@ object SessionManager {
         get() = uid ?: "all-vets"
 
     fun initialize(context: Context) {
-        val stored = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val stored = SecureSessionPreferences(context.applicationContext, PREFS_NAME)
         prefs = stored
         appRole = if (context.packageName == VET_PACKAGE) Role.VET else Role.FARMER
         sessionToken = stored.getString(KEY_SESSION_TOKEN, null)
@@ -97,11 +117,16 @@ object SessionManager {
         pincode = stored.getString(KEY_PINCODE, null)
         profileComplete = stored.getBoolean(KEY_PROFILE_COMPLETE, false)
         val storedRole = stored.getString(KEY_ROLE, null)?.let { runCatching { Role.valueOf(it) }.getOrNull() }
-        // Sessions without a backend token (pre-rebuild installs) must re-login.
-        if (sessionToken == null) {
+        tokenExpiresAtMs = sessionToken?.let(::tokenExpiryMillis) ?: 0L
+        val hadStoredSession = sessionToken != null || uid != null || storedRole != null
+        // Sessions without a valid backend token must re-login.
+        if (sessionToken == null || storedRole == null || isSessionExpired) {
+            if (hadStoredSession) needsLocalDataWipe = true
             clearInMemory()
+            prefs?.clearAll()
         } else {
             role = storedRole
+            needsLocalDataWipe = false
         }
     }
 
@@ -130,19 +155,21 @@ object SessionManager {
         this.village = village
         this.pincode = pincode
         this.profileComplete = profileComplete
-        prefs?.edit()
-            ?.putString(KEY_SESSION_TOKEN, token)
-            ?.putString(KEY_UID, userId)
-            ?.putString(KEY_PHONE, userPhone)
-            ?.putString(KEY_ROLE, role.name)
-            ?.putString(KEY_NAME, name)
-            ?.putString(KEY_EMAIL, email)
-            ?.putString(KEY_PREFERRED_LANGUAGE, language)
-            ?.putInt(KEY_ANIMAL_COUNT, animalCount)
-            ?.putString(KEY_VILLAGE, village)
-            ?.putString(KEY_PINCODE, pincode)
-            ?.putBoolean(KEY_PROFILE_COMPLETE, profileComplete)
-            ?.apply()
+        this.tokenExpiresAtMs = tokenExpiryMillis(token)
+        this.needsLocalDataWipe = false
+        prefs?.edit {
+            putString(KEY_SESSION_TOKEN, token)
+            putString(KEY_UID, userId)
+            putString(KEY_PHONE, userPhone)
+            putString(KEY_ROLE, role.name)
+            putString(KEY_NAME, name)
+            putString(KEY_EMAIL, email)
+            putString(KEY_PREFERRED_LANGUAGE, language)
+            putInt(KEY_ANIMAL_COUNT, animalCount)
+            putString(KEY_VILLAGE, village)
+            putString(KEY_PINCODE, pincode)
+            putBoolean(KEY_PROFILE_COMPLETE, profileComplete)
+        }
     }
 
     fun setFarmerProfile(
@@ -160,20 +187,20 @@ object SessionManager {
         this.village = village
         this.pincode = pincode
         this.profileComplete = true
-        prefs?.edit()
-            ?.putString(KEY_NAME, name)
-            ?.putString(KEY_EMAIL, email)
-            ?.putString(KEY_PREFERRED_LANGUAGE, preferredLanguage)
-            ?.putInt(KEY_ANIMAL_COUNT, animalCount)
-            ?.putString(KEY_VILLAGE, village)
-            ?.putString(KEY_PINCODE, pincode)
-            ?.putBoolean(KEY_PROFILE_COMPLETE, true)
-            ?.apply()
+        prefs?.edit {
+            putString(KEY_NAME, name)
+            putString(KEY_EMAIL, email)
+            putString(KEY_PREFERRED_LANGUAGE, preferredLanguage)
+            putInt(KEY_ANIMAL_COUNT, animalCount)
+            putString(KEY_VILLAGE, village)
+            putString(KEY_PINCODE, pincode)
+            putBoolean(KEY_PROFILE_COMPLETE, true)
+        }
     }
 
     fun logout() {
         clearInMemory()
-        prefs?.edit()?.clear()?.apply()
+        prefs?.clearAll()
     }
 
     private fun clearInMemory() {
@@ -188,5 +215,29 @@ object SessionManager {
         village = null
         pincode = null
         profileComplete = false
+        tokenExpiresAtMs = 0L
+    }
+
+    /**
+     * Backend tokens are `base64url(payload).signature` with exp in epoch millis.
+     * Returns 0 for tokens we cannot parse (the server still validates them).
+     */
+    private fun tokenExpiryMillis(token: String): Long {
+        val payload = token.substringBefore('.', missingDelimiterValue = "")
+        if (payload.isBlank()) return 0L
+        return runCatching {
+            val json = JSONObject(
+                String(
+                    Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
+                    Charsets.UTF_8,
+                ),
+            )
+            val raw = json.optLong("exp", 0L)
+            when {
+                raw <= 0L -> 0L
+                raw < 10_000_000_000L -> raw * 1000L
+                else -> raw
+            }
+        }.getOrDefault(0L)
     }
 }

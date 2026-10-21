@@ -44,6 +44,20 @@ class TursoClient(context: Context) {
         }
     }
 
+    /** Closes the handle and removes the local database (used on sign-out). */
+    suspend fun closeAndDelete() = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            runCatching { database?.close() }
+            database = null
+            runCatching {
+                File(databasePath).delete()
+                File("$databasePath-wal").delete()
+                File("$databasePath-shm").delete()
+                File("$databasePath-journal").delete()
+            }
+        }
+    }
+
     private fun <T> withConnection(block: (Connection) -> T): T {
         val connection = ensureDatabase().connect()
         return connection.use {

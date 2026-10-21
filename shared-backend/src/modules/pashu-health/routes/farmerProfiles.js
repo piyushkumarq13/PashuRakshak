@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
-import { verifySession } from '../../../core/middleware/verifySession.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -21,7 +21,7 @@ function num(value, fallback = null) {
  * Protected by verifyAppKey (router-level) + verifySession.
  * Upserts into pashu_farmer_profiles keyed by the session user's id.
  */
-router.post('/', verifySession, async (req, res) => {
+router.post('/', verifySession, requireRole('farmer'), async (req, res) => {
   const animalCount = num(req.body?.animalCount) ?? num(req.body?.animal_count);
   const village = str(req.body?.village);
   const pincode = str(req.body?.pincode);
@@ -85,7 +85,7 @@ router.post('/', verifySession, async (req, res) => {
  * Protected by verifyAppKey + verifySession.
  * Returns the current farmer's profile or 404.
  */
-router.get('/me', verifySession, async (req, res) => {
+router.get('/me', verifySession, requireRole('farmer'), async (req, res) => {
   try {
     const userResult = await db.execute({
       sql: 'SELECT id FROM users WHERE id = ?',

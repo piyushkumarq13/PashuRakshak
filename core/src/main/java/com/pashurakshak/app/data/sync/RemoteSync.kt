@@ -5,6 +5,7 @@ import com.pashurakshak.app.BuildConfig
 import com.pashurakshak.app.data.AlertRepository
 import com.pashurakshak.app.data.AnimalRepository
 import com.pashurakshak.app.data.ReportRepository
+import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.data.VaccinationRepository
 import com.pashurakshak.app.data.local.Alert
 import com.pashurakshak.app.data.local.Animal
@@ -34,6 +35,7 @@ import java.net.URL
 object RemoteSync {
 
     private const val TAG = "RemoteSync"
+    private const val ALL_VETS = "all-vets"
     private val baseUrl: String get() = BuildConfig.API_BASE_URL
 
     /** Coalesce concurrent pullAll() calls so screens don't stack network storms. */
@@ -42,6 +44,7 @@ object RemoteSync {
     private const val PULL_MIN_INTERVAL_MS = 4_000L
 
     suspend fun syncAll() {
+        if (!SessionManager.isLoggedIn) return
         pushLocals()
         pullAll()
     }
@@ -80,10 +83,10 @@ object RemoteSync {
     }
 
     private fun deleteJson(path: String) {
-        if (baseUrl.isBlank()) return
+        if (baseUrl.isBlank() || !SessionManager.isLoggedIn) return
         val connection = open("$baseUrl$path", "DELETE")
         try {
-            connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+            connection.applyAuth()
             connection.doOutput = true
             connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
             readJson(connection)
@@ -106,15 +109,22 @@ object RemoteSync {
     }
 
     private suspend fun pushLocals() {
-        runCatching {
-            ServiceLocator.animalRepository.getAll().forEach { animal ->
-                runCatching { pushAnimal(animal) }
+        val uid = SessionManager.uid ?: return
+        val role = SessionManager.role ?: return
+        val ownAnimals = runCatching {
+            ServiceLocator.animalRepository.getAll().filter {
+                role == SessionManager.Role.VET || it.ownerFarmerId == uid
             }
+        }.getOrDefault(emptyList())
+        ownAnimals.forEach { animal ->
+            runCatching { pushAnimal(animal) }
         }
+
+        val ownAnimalIds = ownAnimals.map { it.id }.toSet()
         runCatching {
-            ServiceLocator.vaccinationRepository.getAll().forEach { v ->
-                runCatching { pushVaccination(v) }
-            }
+            ServiceLocator.vaccinationRepository.getAll()
+                .filter { role == SessionManager.Role.VET || it.animalId in ownAnimalIds }
+                .forEach { v -> runCatching { pushVaccination(v) } }
         }
         runCatching {
             ServiceLocator.alertRepository.getAll().forEach { a ->
@@ -148,8 +158,11 @@ object RemoteSync {
         val body = getJson("/api/v1/pashu-health/animals") ?: return
         val array = body.optJSONArray("animals") ?: JSONArray()
         val animals = ServiceLocator.animalRepository
+        val uid = SessionManager.uid ?: return
+        val isVet = SessionManager.role == SessionManager.Role.VET
         for (i in 0 until array.length()) {
             val row = array.getJSONObject(i)
+            if (!isVet && row.optString("owner_farmer_id") != uid) continue
             runCatching {
                 animals.insertIfAbsent(
                     Animal(
@@ -169,8 +182,16 @@ object RemoteSync {
         val body = getJson("/api/v1/pashu-health/vaccinations") ?: return
         val array = body.optJSONArray("vaccinations") ?: JSONArray()
         val repo = ServiceLocator.vaccinationRepository
+        val isVet = SessionManager.role == SessionManager.Role.VET
+        val ownedAnimalIds = if (isVet) {
+            emptySet()
+        } else {
+            runCatching { ServiceLocator.animalRepository.getAll().map { it.id }.toSet() }
+                .getOrDefault(emptySet())
+        }
         for (i in 0 until array.length()) {
             val row = array.getJSONObject(i)
+            if (!isVet && row.optString("animal_id") !in ownedAnimalIds) continue
             runCatching {
                 repo.insertIfAbsent(
                     Vaccination(
@@ -189,8 +210,11 @@ object RemoteSync {
         val body = getJson("/api/v1/pashu-health/reports") ?: return
         val array = body.optJSONArray("reports") ?: JSONArray()
         val repo = ServiceLocator.reportRepository
+        val uid = SessionManager.uid ?: return
+        val isVet = SessionManager.role == SessionManager.Role.VET
         for (i in 0 until array.length()) {
             val row = array.getJSONObject(i)
+            if (!isVet && row.optString("farmer_id") != uid) continue
             runCatching {
                 val symptomsJson = row.optString("symptoms", "[]")
                 val symptomsList = JSONArray(symptomsJson).let { arr ->
@@ -228,6 +252,11 @@ object RemoteSync {
                         qrCodeId = row.optString("qr_code_id").takeIf { it.isNotBlank() }
                             ?: "QR-" + java.util.UUID.randomUUID().toString().uppercase(),
                         diseaseDescription = row.optString("disease_description").takeIf { it.isNotBlank() },
+                        qrVerified = row.optBoolean("qrVerified", false) ||
+                            row.optInt("qr_verified", 0) != 0,
+                        verifiedAt = row.optLong("verifiedAt", 0L).takeIf { it > 0L }
+                            ?: row.optLong("verified_at", 0L).takeIf { it > 0L },
+                        verifiedBy = row.optString("verified_by").takeIf { it.isNotBlank() },
                     ),
                 )
             }.onFailure { Log.w(TAG, "report pull row failed: ${it.message}") }
@@ -238,8 +267,16 @@ object RemoteSync {
         val body = getJson("/api/v1/pashu-health/alerts") ?: return
         val array = body.optJSONArray("alerts") ?: JSONArray()
         val repo = ServiceLocator.alertRepository
+        val uid = SessionManager.uid ?: return
+        val role = SessionManager.role ?: return
+        val roleValue = if (role == SessionManager.Role.VET) "vet" else "farmer"
         for (i in 0 until array.length()) {
             val row = array.getJSONObject(i)
+            val recipientRole = row.optString("recipient_role")
+            val recipientId = row.optString("recipient_id")
+            val recipientMatches = recipientRole.equals(roleValue, ignoreCase = true) &&
+                (recipientId == uid || (role == SessionManager.Role.VET && recipientId == ALL_VETS))
+            if (!recipientMatches) continue
             runCatching {
                 repo.insertIfAbsent(
                     Alert(
@@ -256,10 +293,10 @@ object RemoteSync {
     }
 
     private fun getJson(path: String): JSONObject? {
-        if (baseUrl.isBlank()) return null
+        if (baseUrl.isBlank() || !SessionManager.isLoggedIn) return null
         return try {
             val connection = open("$baseUrl$path", "GET")
-            connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+            connection.applyAuth()
             readJson(connection)
         } catch (error: Exception) {
             Log.w(TAG, "GET $path failed: ${error.message}")
@@ -268,11 +305,15 @@ object RemoteSync {
     }
 
     private fun postJson(path: String, payload: JSONObject) {
-        if (baseUrl.isBlank()) return
+        if (baseUrl.isBlank() || !SessionManager.isLoggedIn) return
         val connection = open("$baseUrl$path", "POST")
         try {
             connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+            connection.applyAuth()
+            connection.setRequestProperty(
+                "Idempotency-Key",
+                payload.optString("id") + ":" + payload.toString().hashCode().toString(16),
+            )
             connection.doOutput = true
             connection.outputStream.use {
                 it.write(payload.toString().toByteArray(Charsets.UTF_8))
@@ -281,6 +322,11 @@ object RemoteSync {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun HttpURLConnection.applyAuth() {
+        setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+        SessionManager.sessionToken?.let { setRequestProperty("Authorization", "Bearer $it") }
     }
 
     private fun open(rawUrl: String, method: String): HttpURLConnection {

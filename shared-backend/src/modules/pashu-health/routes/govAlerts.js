@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -8,7 +9,7 @@ const router = Router();
  * Returns all government alerts. Protected by verifyAppKey (router-level).
  * For future dashboard use.
  */
-router.get('/', async (_req, res) => {
+router.get('/', verifySession, requireRole('gov'), async (_req, res) => {
   try {
     const result = await db.execute(
       'SELECT * FROM pashu_gov_alerts ORDER BY created_at DESC',

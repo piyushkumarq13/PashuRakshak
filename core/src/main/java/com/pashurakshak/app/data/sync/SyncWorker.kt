@@ -26,6 +26,10 @@ class SyncWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        if (!com.pashurakshak.app.data.SessionManager.isLoggedIn) {
+            SyncStatusHolder.reset()
+            return Result.success()
+        }
         SyncStatusHolder.setSyncing(true)
         return try {
             val reportRepository = ServiceLocator.reportRepository

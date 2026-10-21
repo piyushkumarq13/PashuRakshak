@@ -10,6 +10,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 /**
  * Pushes symptom reports to the shared-backend (POST /api/v1/pashu-health/reports).
@@ -46,6 +47,7 @@ class ReportPushApi(
         val connection = open("$baseUrl/api/v1/pashu-health/reports", "POST")
         connection.setRequestProperty("Content-Type", "application/json")
         connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+        connection.setRequestProperty("Idempotency-Key", idempotencyKey(payload))
         connection.setRequestProperty("Authorization", "Bearer $sessionToken")
         connection.doOutput = true
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
@@ -55,6 +57,20 @@ class ReportPushApi(
     private fun currentSessionToken(): String =
         SessionManager.sessionToken
             ?: throw IOException("Not signed in — no session token for push")
+
+    /**
+     * A report can be re-pushed later with a new photo URL or vet assessment.
+     * Keying only by report id would replay the stale cached response, so bind
+     * the key to the exact payload while keeping retries of the same payload stable.
+     */
+    private fun idempotencyKey(payload: JSONObject): String {
+        val body = payload.toString()
+        val hash = MessageDigest.getInstance("SHA-256")
+            .digest(body.toByteArray(Charsets.UTF_8))
+            .take(12)
+            .joinToString("") { "%02x".format(it) }
+        return "${payload.optString("id")}:$hash"
+    }
 
     private fun buildPayload(report: SymptomReport): JSONObject =
         JSONObject().apply {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ async function listAvailableVets(req, res) {
 
   try {
     const result = await db.execute({
-      sql: `SELECT u.id, u.phone, u.name, u.email, u.preferred_language,
+      sql: `SELECT u.id, u.name, u.preferred_language,
                v.pincode, v.service_areas
         FROM users u
         JOIN pashu_vet_profiles v ON u.id = v.user_id
@@ -42,7 +43,7 @@ async function listAvailableVets(req, res) {
   }
 }
 
-router.get('/', listAvailableVets);
-router.get('/available', listAvailableVets);
+router.get('/', verifySession, requireRole('farmer', 'vet'), listAvailableVets);
+router.get('/available', verifySession, requireRole('farmer', 'vet'), listAvailableVets);
 
 export default router;

@@ -12,3 +12,8 @@
 .externalNativeBuild
 .cxx
 .kotlin
+
+# Release signing material - never commit
+/keystore.properties
+/keystore/
+/dist

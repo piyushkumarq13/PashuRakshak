@@ -1,3 +1,6 @@
+import { timingSafeEqual } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
 import { env } from './config/env.js';
@@ -31,15 +34,16 @@ app.get('/health', (_req, res) => {
 });
 
 // ── OTP debug page (temporary while SMTP is being fixed) ──────────────────
-// Set OTP_PAGE=false in the environment to disable.
-const otpPageEnabled = (process.env.OTP_PAGE ?? 'true').toLowerCase() !== 'false';
+// Disabled by default; enable only for local debugging with OTP_PAGE=true.
+const otpPageEnabled = (process.env.OTP_PAGE ?? 'false').toLowerCase() === 'true';
+const otpPageOpen = !env.isProduction && (process.env.OTP_PAGE_OPEN ?? '').toLowerCase() === 'true';
 
 function otpAuthOk(req) {
   // Open when OTP_PAGE_OPEN=true; otherwise require ?key=<ADMIN_SECRET>
   // (or X-Admin-Secret header) so strangers can't harvest codes.
-  if ((process.env.OTP_PAGE_OPEN ?? '').toLowerCase() === 'true') return true;
+  if (otpPageOpen) return true;
   const key = req.query.key ?? req.get('x-admin-secret');
-  return typeof key === 'string' && key.length > 0 && key === env.adminSecret;
+  return typeof key === 'string' && safeEqual(key, env.adminSecret);
 }
 
 if (otpPageEnabled) {
@@ -131,6 +135,12 @@ if (otpPageEnabled) {
   });
 }
 
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left ?? ''));
+  const b = Buffer.from(String(right ?? ''));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -161,7 +171,18 @@ async function start() {
   });
 }
 
-start().catch((error) => {
-  console.error('[app] failed to start:', error);
-  process.exit(1);
-});
+// Exported for serverless hosts (Vercel's `api/index.js`); they import the
+// Express app instead of starting a long-running listener.
+export { app };
+export default app;
+
+// Only listen when run directly (`npm start`, `node src/app.js`).
+const isDirectRun =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  start().catch((error) => {
+    console.error('[app] failed to start:', error);
+    process.exit(1);
+  });
+}

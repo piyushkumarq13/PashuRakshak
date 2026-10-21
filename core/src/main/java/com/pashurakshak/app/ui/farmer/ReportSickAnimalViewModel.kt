@@ -221,6 +221,10 @@ class ReportSickAnimalViewModel(
 
     /** Ask the server-side AI to analyze the disease first, before the score is shown. */
     fun analyzeWithAi() {
+        viewModelScope.launch { performAiAnalysis() }
+    }
+
+    private suspend fun performAiAnalysis() {
         val state = _uiState.value
         val symptomLabels = Symptom.entries
             .filter { it in state.selectedSymptoms && it != Symptom.OTHER }
@@ -228,32 +232,30 @@ class ReportSickAnimalViewModel(
         val customDisease = state.customDiseaseText.trim()
         val symptoms = (symptomLabels + listOfNotNull(customDisease.takeIf { state.hasOtherSelected && it.isNotBlank() }))
         if (!state.hasSomeDiseaseDetails && symptoms.isEmpty()) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isAnalyzingAi = true, error = null) }
-            when (val result = ServiceLocator.aiRiskApi.analyze(
-                symptoms = symptoms,
-                diseaseDescription = state.diseaseDescription.ifBlank { customDisease.takeIf { it.isNotBlank() } },
-                species = state.animals.firstOrNull { it.id == state.selectedAnimalId }?.species,
-            )) {
-                is com.pashurakshak.app.data.remote.AiRiskApi.Result.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isAnalyzingAi = false,
-                            aiAnalysis = result.analysis,
-                            aiScore = result.score,
-                            aiLikelyCondition = result.likelyCondition,
-                        )
-                    }
+        _uiState.update { it.copy(isAnalyzingAi = true, error = null) }
+        when (val result = ServiceLocator.aiRiskApi.analyze(
+            symptoms = symptoms,
+            diseaseDescription = state.diseaseDescription.ifBlank { customDisease.takeIf { it.isNotBlank() } },
+            species = state.animals.firstOrNull { it.id == state.selectedAnimalId }?.species,
+        )) {
+            is com.pashurakshak.app.data.remote.AiRiskApi.Result.Success -> {
+                _uiState.update {
+                    it.copy(
+                        isAnalyzingAi = false,
+                        aiAnalysis = result.analysis,
+                        aiScore = result.score,
+                        aiLikelyCondition = result.likelyCondition,
+                    )
                 }
-                is com.pashurakshak.app.data.remote.AiRiskApi.Result.Failure -> {
-                    _uiState.update {
-                        it.copy(
-                            isAnalyzingAi = false,
-                            error = "AI analysis unavailable, using rule-based score",
-                            aiAnalysis = null,
-                            aiScore = null,
-                        )
-                    }
+            }
+            is com.pashurakshak.app.data.remote.AiRiskApi.Result.Failure -> {
+                _uiState.update {
+                    it.copy(
+                        isAnalyzingAi = false,
+                        error = "AI analysis unavailable, using rule-based score",
+                        aiAnalysis = null,
+                        aiScore = null,
+                    )
                 }
             }
         }
@@ -269,21 +271,33 @@ class ReportSickAnimalViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, error = null, aiAdvisory = null) }
+            // Always run the AI analysis first so the submitted score reflects BOTH
+            // the rule-based system and the AI's disease analysis. If the farmer
+            // already analyzed, reuse that result.
+            var effectiveState = _uiState.value
+            if (effectiveState.aiScore == null &&
+                (effectiveState.selectedSymptoms.isNotEmpty() ||
+                    effectiveState.diseaseDescription.isNotBlank() ||
+                    effectiveState.customDiseaseText.isNotBlank())
+            ) {
+                performAiAnalysis()
+                effectiveState = _uiState.value
+            }
             runCatching {
-                val symptoms = Symptom.entries.filter { it in state.selectedSymptoms }
+                val symptoms = Symptom.entries.filter { it in effectiveState.selectedSymptoms }
                 val symptomLabels = symptoms.map { it.label }.map { label ->
-                    if (label == Symptom.OTHER.label && state.customDiseaseText.isNotBlank()) {
-                        state.customDiseaseText.trim()
+                    if (label == Symptom.OTHER.label && effectiveState.customDiseaseText.isNotBlank()) {
+                        effectiveState.customDiseaseText.trim()
                     } else {
                         label
                     }
                 }
-                val riskScore = state.riskScore
+                val riskScore = effectiveState.riskScore
                 val breakdown = buildMap {
                     symptoms.forEach { put(it.label, it.basePoints) }
                     val bonus = 10 * (symptoms.size - 1)
                     if (bonus > 0) put("multiple_symptoms", bonus)
-                    state.aiScore?.let { put("ai_score", it) }
+                    effectiveState.aiScore?.let { put("ai_score", it) }
                 }
                 val animal = state.animals.firstOrNull { it.id == animalId }
                 val animalLabel = animal?.let { "${it.name} (${it.species})" } ?: "animal"
@@ -317,7 +331,7 @@ class ReportSickAnimalViewModel(
                         alertRepository.insert(
                             Alert(
                                 recipientRole = "vet",
-                                recipientId = SessionManager.vetId,
+                                recipientId = "all-vets",
                                 message = "New high-risk case: $animalLabel — risk score $riskScore.",
                             ),
                         )

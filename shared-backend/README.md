@@ -46,6 +46,38 @@ curl http://localhost:3000/health
 # {"status":"ok"}
 ```
 
+## Deploy
+
+### Render
+
+`render.yaml` is ready to use (Blueprint → New Blueprint Instance, root
+`shared-backend`). Set the `sync: false` variables in the dashboard, including
+`SESSION_SECRET` (required because Render sets `NODE_ENV=production`).
+
+> **Email on Render Free:** Render blocks outbound SMTP ports `25`, `465`, and
+> `587` on Free web services, so Gmail SMTP cannot work there. Either:
+> 1. set `MAIL_MODE=brevo` (or `resend`) + the matching API key over HTTPS
+>    (**recommended — no Render upgrade needed**), or
+> 2. upgrade the Render instance to a paid plan and keep `MAIL_MODE=smtp`.
+>
+> With `MAIL_MODE=auto`, the server uses Brevo → Resend → SMTP → console log in
+> that order, so adding a Brevo key is enough to fix OTP delivery.
+
+### Vercel (optional — lets Gmail SMTP work)
+
+The backend also runs as a Vercel serverless function via `api/index.js` and
+`vercel.json`:
+
+1. Import the repo, set **Root Directory** to `shared-backend`.
+2. Add all environment variables (`TURSO_*`, `ADMIN_SECRET`,
+   `SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, mail settings, etc.).
+3. Deploy. `npm run vercel-build` runs database migrations during the build.
+4. For Gmail SMTP set `MAIL_MODE=smtp` plus `SMTP_USER` and
+   `SMTP_PASS` (App Password).
+
+Note: serverless functions are stateless, so the in-memory `/otp` debug page
+should stay disabled (`OTP_PAGE=false`). Use Brevo/SMTP for real delivery.
+
 ## Authentication (custom — no Firebase Auth)
 
 Tokens are stateless HMAC-SHA256 signatures (`src/core/services/sessionToken.js`):
@@ -70,7 +102,9 @@ PINs are exactly 6 digits; vet accounts may also use a password (≥ 6 chars).
 OTP codes are 6 digits, SHA-256-hashed at rest, 10-minute TTL, 5 attempts,
 rate-limited to 1 send / 60 s and 5 sends / hour per (email, purpose).
 Delivery: `MAIL_MODE=log` prints the code to the server console (dev);
-`MAIL_MODE=smtp` sends email via Gmail SMTP (use an App Password).
+`MAIL_MODE=smtp` sends email via Gmail SMTP (use an App Password);
+`MAIL_MODE=brevo` / `resend` send over HTTPS (required on Render Free);
+`MAIL_MODE=auto` picks Brevo → Resend → SMTP → log, whichever is configured.
 
 ### Auth endpoints (`/api/v1/auth/*`, all require `X-App-Key`)
 
@@ -476,8 +510,10 @@ See `.env.example`:
 | `CORS_ALLOWED_ORIGINS` | yes | Comma-separated allowed origins (backend + both webs: 3000, 5173, 5174) |
 | `ADMIN_SECRET` | yes | Value of the `X-Admin-Secret` header for admin routes |
 | `SESSION_SECRET` | recommended | HMAC secret for session/verify tokens. Falls back to a value derived from `ADMIN_SECRET` when unset |
-| `MAIL_MODE` | no (default `log`) | `log` prints OTP codes to the console; `smtp` sends email |
+| `MAIL_MODE` | no (default `log`) | `log`, `smtp`, `brevo`, `resend`, or `auto` |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` | for `MAIL_MODE=smtp` | Gmail SMTP (App Password) |
+| `BREVO_API_KEY` | for `MAIL_MODE=brevo` | Brevo HTTPS API key (works on Render Free) |
+| `RESEND_API_KEY` | for `MAIL_MODE=resend` | Resend HTTPS API key (works on Render Free) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | for FCM push | One-line service-account JSON. Missing → push helpers skip gracefully; login is unaffected |
 | `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET_NAME` | for photo storage | Backblaze B2 (mirrors Android `local.properties`) |
 | `GROQ_API_KEY` | no | Groq API key for AI advisory and chat. Without it, AI routes degrade gracefully and return `null`. |

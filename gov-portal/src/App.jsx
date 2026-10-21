@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getToken, setToken } from './api'
+import { AUTH_EXPIRED_EVENT, getToken, setToken } from './api'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
 
@@ -25,7 +25,9 @@ export default function App() {
     try {
       const payloadPart = token.split('.')[0]
       if (payloadPart) {
-        const json = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')))
+        const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/')
+        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+        const json = JSON.parse(atob(padded))
         if (json.role === 'gov' && json.exp && json.exp > Date.now()) {
           setMagistrate({ email: json.email, district: json.district, name: null })
           setChecking(false)
@@ -42,6 +44,15 @@ export default function App() {
   useEffect(() => {
     restore()
   }, [restore])
+
+  useEffect(() => {
+    function onAuthExpired() {
+      setMagistrate(null)
+      setChecking(false)
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired)
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired)
+  }, [])
 
   function handleLoggedIn(data) {
     setToken(data.token)

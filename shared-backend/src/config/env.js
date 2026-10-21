@@ -6,10 +6,11 @@ dotenv.config();
 const REQUIRED_VARS = [
   'TURSO_DATABASE_URL',
   'TURSO_AUTH_TOKEN',
-  'PORT',
   'CORS_ALLOWED_ORIGINS',
   'ADMIN_SECRET',
 ];
+
+const MAIL_MODES = ['log', 'smtp', 'brevo', 'resend', 'auto'];
 
 function readEnv(name) {
   const value = process.env[name];
@@ -28,7 +29,8 @@ function loadEnv() {
     );
   }
 
-  const port = Number(readEnv('PORT'));
+  // Render sets PORT automatically; Vercel serverless does not need one.
+  const port = Number(readEnv('PORT') ?? '3000');
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid PORT "${process.env.PORT}" — must be an integer between 1 and 65535.`);
   }
@@ -45,17 +47,34 @@ function loadEnv() {
   }
 
   const adminSecret = readEnv('ADMIN_SECRET');
+  const nodeEnv = (readEnv('NODE_ENV') ?? 'development').toLowerCase();
+  const isProduction = nodeEnv === 'production';
 
-  // Session-token signing secret. Falls back to a value derived from
-  // ADMIN_SECRET so existing deployments keep working without new config.
-  // Set SESSION_SECRET explicitly in production for best practice.
+  if (isProduction && corsAllowedOrigins.includes('*')) {
+    // Kept as a warning (not fatal): Render sets NODE_ENV=production, and
+    // wildcard CORS is needed while Vercel preview URLs are still changing.
+    // Prefer listing your exact domains once they are final.
+    console.warn(
+      '[env] CORS_ALLOWED_ORIGINS contains "*" in production — every origin can call the API. ' +
+        'Replace it with your deployed Vercel URLs for tighter security.',
+    );
+  }
+
+  const configuredSessionSecret = readEnv('SESSION_SECRET');
+  if (isProduction && !configuredSessionSecret) {
+    throw new Error(
+      'SESSION_SECRET is required in production. Generate a long random value and set it in the environment.',
+    );
+  }
+
+  // Fallback keeps local development working; production must set SESSION_SECRET.
   const sessionSecret =
-    readEnv('SESSION_SECRET') ??
+    configuredSessionSecret ??
     createHash('sha256').update(`pashurakshak-session:${adminSecret}`).digest('hex');
 
   const mailMode = (readEnv('MAIL_MODE') ?? 'log').toLowerCase();
-  if (mailMode !== 'log' && mailMode !== 'smtp') {
-    throw new Error(`Invalid MAIL_MODE "${mailMode}" — must be "log" or "smtp".`);
+  if (!MAIL_MODES.includes(mailMode)) {
+    throw new Error(`Invalid MAIL_MODE "${mailMode}" — must be one of: ${MAIL_MODES.join(', ')}.`);
   }
 
   const smtpPort = Number(readEnv('SMTP_PORT') ?? '587');
@@ -64,6 +83,8 @@ function loadEnv() {
   }
 
   return {
+    nodeEnv,
+    isProduction,
     tursoDatabaseUrl: readEnv('TURSO_DATABASE_URL'),
     tursoAuthToken: readEnv('TURSO_AUTH_TOKEN'),
     port,
@@ -76,6 +97,9 @@ function loadEnv() {
     smtpPort,
     smtpUser: readEnv('SMTP_USER'),
     smtpPass: readEnv('SMTP_PASS'),
+    // HTTPS email providers (needed on Render Free, which blocks SMTP ports).
+    brevoApiKey: readEnv('BREVO_API_KEY'),
+    resendApiKey: readEnv('RESEND_API_KEY'),
     mailFrom: readEnv('MAIL_FROM') ?? readEnv('SMTP_USER'),
   };
 }

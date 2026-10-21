@@ -87,7 +87,7 @@ private fun dailyTip(): String {
 
 @Composable
 fun FarmerHomeScreen(
-    onOpenMyReports: () -> Unit,
+    onOpenMyReports: (String) -> Unit,
     onOpenAnimals: () -> Unit,
     onOpenReport: () -> Unit,
     onOpenVaccination: () -> Unit,
@@ -160,7 +160,7 @@ fun FarmerHomeScreen(
                             icon = Icons.AutoMirrored.Filled.ReceiptLong,
                             accent = AppColors.Info,
                             modifier = Modifier.weight(1f),
-                            onClick = onOpenMyReports,
+                            onClick = { onOpenMyReports("all") },
                         )
                         StatCard(
                             label = "Active",
@@ -168,7 +168,15 @@ fun FarmerHomeScreen(
                             icon = Icons.Default.Warning,
                             accent = AppColors.Warning,
                             modifier = Modifier.weight(1f),
-                            onClick = onOpenMyReports,
+                            onClick = { onOpenMyReports("ongoing") },
+                        )
+                        StatCard(
+                            label = "Examined",
+                            value = state.examinedReportCount.toString(),
+                            icon = Icons.Default.CheckCircle,
+                            accent = AppColors.Healthy,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onOpenMyReports("examined") },
                         )
                     }
                 }
@@ -216,7 +224,7 @@ fun FarmerHomeScreen(
                                 subtitle = "AI risk & vet visits",
                                 tint = AppColors.Info,
                                 modifier = Modifier.weight(1f),
-                                onClick = onOpenMyReports,
+                                onClick = { onOpenMyReports("all") },
                             )
                             ActionTile(
                                 icon = Icons.Default.Pets,
@@ -291,6 +299,23 @@ fun FarmerHomeScreen(
                                     },
                                     icon = Icons.Default.Vaccines,
                                     highlight = state.vaccinationsDue > 0,
+                                )
+                                OverviewLine(
+                                    label = "Ongoing cases",
+                                    value = state.ongoingReportCount.toString(),
+                                    icon = Icons.Default.Warning,
+                                    highlight = state.ongoingReportCount > 0,
+                                )
+                                OverviewLine(
+                                    label = "Examined cases",
+                                    value = state.examinedReportCount.toString(),
+                                    icon = Icons.Default.CheckCircle,
+                                )
+                                OverviewLine(
+                                    label = "High-risk cases",
+                                    value = state.highRiskReportCount.toString(),
+                                    icon = Icons.Default.Warning,
+                                    highlight = state.highRiskReportCount > 0,
                                 )
                                 OverviewLine(
                                     label = "Unread alerts",
@@ -587,7 +612,7 @@ private fun OverviewLine(
 
 @Composable
 fun VetHomeScreen(
-    onOpenCaseQueue: () -> Unit,
+    onOpenCaseQueue: (String) -> Unit,
     onOpenAlerts: () -> Unit = {},
     onOpenProfile: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -644,7 +669,7 @@ fun VetHomeScreen(
                             icon = Icons.Default.ContentPaste,
                             accent = AppColors.Primary,
                             modifier = Modifier.weight(1f),
-                            onClick = onOpenCaseQueue,
+                            onClick = { onOpenCaseQueue("ongoing") },
                         )
                         StatCard(
                             label = "High risk",
@@ -652,7 +677,7 @@ fun VetHomeScreen(
                             icon = Icons.Default.Warning,
                             accent = AppColors.Danger,
                             modifier = Modifier.weight(1f),
-                            onClick = onOpenCaseQueue,
+                            onClick = { onOpenCaseQueue("high_risk") },
                         )
                         StatCard(
                             label = "Examined",
@@ -660,7 +685,7 @@ fun VetHomeScreen(
                             icon = Icons.Default.CheckCircle,
                             accent = AppColors.Info,
                             modifier = Modifier.weight(1f),
-                            onClick = onOpenCaseQueue,
+                            onClick = { onOpenCaseQueue("examined") },
                         )
                     }
                 }
@@ -679,7 +704,7 @@ fun VetHomeScreen(
                                     title = "Case queue",
                                     subtitle = "Triage incoming farmer reports",
                                     tint = AppColors.Primary,
-                                    onClick = onOpenCaseQueue,
+                                    onClick = { onOpenCaseQueue("ongoing") },
                                 )
                                 QuickActionRow(
                                     icon = Icons.Default.Notifications,

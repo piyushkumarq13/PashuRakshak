@@ -29,7 +29,10 @@ data class VetCaseQueueUiState(
 class VetCaseQueueViewModel(
     private val reportRepository: ReportRepository,
     private val animalRepository: AnimalRepository,
+    private val filter: QueueFilter = QueueFilter.ONGOING,
 ) : ViewModel() {
+
+    enum class QueueFilter { ONGOING, EXAMINED, HIGH_RISK }
 
     private val _uiState = MutableStateFlow(VetCaseQueueUiState())
     val uiState: StateFlow<VetCaseQueueUiState> = _uiState.asStateFlow()
@@ -73,8 +76,18 @@ class VetCaseQueueViewModel(
     private suspend fun loadQueue(): List<QueueItem> {
         val animalsById = animalRepository.getAll().associateBy { it.id }
         return reportRepository.getAll()
-            .filter {
-                it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
+            .filter { report ->
+                val ongoing = report.status == ReportStatus.REPORTED ||
+                    report.status == ReportStatus.VET_ASSIGNED
+                val examined = report.status == ReportStatus.EXAMINED ||
+                    report.status == ReportStatus.SAMPLE_SENT ||
+                    report.status == ReportStatus.CONFIRMED ||
+                    report.status == ReportStatus.RESOLVED
+                when (filter) {
+                    QueueFilter.ONGOING -> ongoing
+                    QueueFilter.EXAMINED -> examined
+                    QueueFilter.HIGH_RISK -> ongoing && riskLevelFor(report.riskScore) == RiskLevel.HIGH
+                }
             }
             .sortedWith(
                 compareByDescending<SymptomReport> { it.riskScore }

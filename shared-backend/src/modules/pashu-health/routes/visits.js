@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../../db/client.js';
 import { verifyAppKey } from '../../../core/middleware/verifyAppKey.js';
-import { verifySession } from '../../../core/middleware/verifySession.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
+import { appendAuditLog } from '../services/auditLog.js';
+import { haversineKm } from '../services/clusterDetection.js';
+import { verifyAndExtractId } from '../services/qrSign.js';
+import { idempotencyReplay, idempotencyStore } from '../services/idempotency.js';
 
 const router = Router();
 
@@ -32,7 +36,7 @@ function num(value, fallback = null) {
  * - If assessment === 'risky': insert a pashu_gov_alerts row
  *   (severity='high', message with animal/village context).
  */
-router.post('/', verifyAppKey, verifySession, async (req, res) => {
+router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, res) => {
   const body = req.body ?? {};
   const reportId = str(body.reportId);
   const scannedQrCodeId = str(body.scannedQrCodeId);
@@ -61,10 +65,14 @@ router.post('/', verifyAppKey, verifySession, async (req, res) => {
       return res.status(403).json({ error: 'forbidden', message: 'A vet session is required.' });
     }
 
+    // Replays of an offline push with the same Idempotency-Key return the
+    // original response instead of creating a second visit.
+    if (await idempotencyReplay(db, req, res)) return;
+
     // Look up the report to get animal_id, assigned_vet_id, village, and status
     const reportResult = await db.execute({
       sql: `SELECT p.symptoms, a.qr_code_id AS animal_qr_code_id, p.qr_code_id AS report_qr_code_id,
-        a.species, p.village, p.assigned_vet_id, p.status
+        a.species, p.village, p.assigned_vet_id, p.status, p.latitude AS report_lat, p.longitude AS report_lon, p.created_at
         FROM pashu_symptom_reports p
         JOIN pashu_animals a ON p.animal_id = a.id
         WHERE p.id = ?`,
@@ -86,35 +94,69 @@ router.post('/', verifyAppKey, verifySession, async (req, res) => {
       });
     }
 
-    // Compare the scanned QR to this report's own QR first; fall back to the
-    // animal's QR only for legacy rows that predate report-level QRs.
+    // Verify the scanned QR's HMAC signature first (proof the payload wasn't
+    // guessed or forged), then compare its embedded id to this report's QR.
+    // Fallback to the animal's QR only for legacy rows.
     const expectedQrCodeId = reportRow.report_qr_code_id || reportRow.animal_qr_code_id;
-    const matched = scannedQrCodeId && expectedQrCodeId && scannedQrCodeId === expectedQrCodeId ? 1 : 0;
+    const signedId = verifyAndExtractId(scannedQrCodeId ?? '', req.appApiKey);
+    const matched = signedId && expectedQrCodeId && signedId === expectedQrCodeId ? 1 : 0;
 
     const now = Date.now();
     const visitId = randomUUID();
 
+    // Confidence: QR match is the base; subtract for GPS distance from the
+    // reported location, and for suspiciously fast verification. Low-confidence
+    // visits are FLAGGED, not hard-rejected (GPS is noisy).
+    let distanceKm = null;
+    if (reportRow.report_lat != null && reportRow.report_lon != null && latitude != null && longitude != null) {
+      distanceKm = haversineKm(reportRow.report_lat, reportRow.report_lon, latitude, longitude);
+    }
+    const secondsSinceReport = reportRow.created_at ? (now - reportRow.created_at) / 1000 : null;
+    const flags = [];
+    if (!matched) flags.push('qr_mismatch');
+    if (!signedId) flags.push('invalid_qr_signature');
+    if (distanceKm != null && distanceKm > 1) flags.push('gps_far_from_report');
+    if (secondsSinceReport != null && secondsSinceReport < 60) flags.push('verified_too_quickly');
+    let confidence = 100;
+    if (!matched) confidence -= 50;
+    if (!signedId) confidence -= 20;
+    if (distanceKm != null) confidence -= Math.min(Math.round(distanceKm * 10), 30);
+    if (flags.includes('verified_too_quickly')) confidence -= 15;
+    confidence = Math.max(0, Math.min(100, confidence));
+    const flagged = confidence < 60 || flags.length > 0 ? 1 : 0;
+
     // Insert visit_verifications row (audit trail even when it doesn't match)
     await db.execute({
-      sql: `INSERT INTO pashu_visit_verifications (id, report_id, vet_id, scanned_qr_code_id, matched, latitude, longitude, verified_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [visitId, reportId, vetUserId, scannedQrCodeId, matched, latitude, longitude, now],
+      sql: `INSERT INTO pashu_visit_verifications (id, report_id, vet_id, scanned_qr_code_id, matched, latitude, longitude, verified_at, confidence, flagged)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [visitId, reportId, vetUserId, scannedQrCodeId, matched, latitude, longitude, now, confidence, flagged],
     });
 
-    // A QR that does not match this report must NOT confirm the visit: the vet
-    // is told to scan the correct QR instead, and the report stays untouched.
+    // A QR that does not match this report must NOT confirm the visit.
     if (!matched) {
-      return res.status(403).json({
-        error: 'qr_mismatch',
-        matched: 0,
-        message: 'Scanned QR code does not match this report. Scan the QR shown for this report first.',
+      await appendAuditLog(db, {
+        actor: vetUserId,
+        action: 'visit_rejected_qr_mismatch',
+        entityType: 'report',
+        entityId: reportId,
+        payload: { matched, confidence, flags },
       });
+      return res.status(409).json({ error: "qr_mismatch", message: "Scanned QR does not match this animal" });
     }
 
-    // UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined'
+    // On a match only: set vet_assessment, status 'examined', AND the
+    // qr_verified/verified_at/verified_by triple so clients can trust it.
     await db.execute({
-      sql: `UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined' WHERE id = ?`,
-      args: [assessment, reportId],
+      sql: `UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined', qr_verified = 1, verified_at = ?, verified_by = ? WHERE id = ?`,
+      args: [assessment, now, vetUserId, reportId],
+    });
+
+    await appendAuditLog(db, {
+      actor: vetUserId,
+      action: 'visit_verified',
+      entityType: 'report',
+      entityId: reportId,
+      payload: { assessment, matched, confidence, flags },
     });
 
     // If assessment === 'risky', insert a pashu_gov_alerts row
@@ -131,15 +173,19 @@ router.post('/', verifyAppKey, verifySession, async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    const responseBody = {
       success: true,
       visit: {
         id: visitId,
         reportId,
         matched,
         assessment,
+        confidence,
+        flagged,
       },
-    });
+    };
+    await idempotencyStore(db, req, responseBody);
+    return res.status(200).json(responseBody);
   } catch (error) {
     console.error('[pashu-health/visits] upsert failed:', error);
     return res.status(500).json({

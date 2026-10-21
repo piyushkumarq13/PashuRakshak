@@ -111,21 +111,32 @@ class CaseDetailViewModel(
 
     fun submitFieldCheck(sampleRequired: Boolean) {
         val report = _uiState.value.report ?: return
-        // A case can only be marked examined after the vet scans the report QR and
-        // it verifies against this case — no bypassing the QR check.
-        if (!_uiState.value.qrVerified) {
-            _uiState.update {
-                it.copy(error = "Scan the report QR first before submitting the details.")
-            }
-            return
-        }
         val assessmentText = _uiState.value.assessmentText
         val newStatus = if (sampleRequired) ReportStatus.SAMPLE_SENT else ReportStatus.EXAMINED
+        // Marking a case examined without a successful QR scan is allowed for the
+        // case to be tracked, but it is NOT QR-verified: the verification row is
+        // written with matched = 0 so downstream screens can label it honestly.
+        val verifiedThisCase = _uiState.value.qrVerified
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmittingFieldCheck = true) }
             runCatching {
                 reportRepository.update(report.copy(status = newStatus, vetAssessment = assessmentText, synced = false))
+                // Persist the visit-verification row locally (matched = 1 only when
+                // the QR actually matched this case; otherwise UNVERIFIED, matched = 0).
+                runCatching {
+                    val lat = _uiState.value.latitudeText.toDoubleOrNull() ?: report.latitude
+                    val lon = _uiState.value.longitudeText.toDoubleOrNull() ?: report.longitude
+                    reportRepository.insertVisitVerification(
+                        reportId = report.id,
+                        scannedQrCodeId = _uiState.value.scannedQrCodeId.orEmpty(),
+                        latitude = lat,
+                        longitude = lon,
+                        assessment = assessmentText.ifBlank { newStatus.dbValue },
+                        matched = if (verifiedThisCase) 1 else 0,
+                    )
+                }
+                com.pashurakshak.app.data.sync.SyncScheduler.triggerNow(com.pashurakshak.app.di.ServiceLocator.context)
                 val animalLabel = _uiState.value.animal?.let { "${it.name} (${it.species})" }
                     ?: "Animal ${report.animalId.take(8)}"
                 val statusLabel = prettifyStatus(newStatus.dbValue)
@@ -165,17 +176,23 @@ class CaseDetailViewModel(
 
     fun onQrScanned(qrCodeId: String) {
         val report = _uiState.value.report
-        // Verify against this report's own QR first; fall back to the animal's QR
-        // for cases created before reports had their own QR code.
+        // First verify the QR payload's HMAC signature (anti guess/forgery), then
+        // compare its embedded id against this report's QR (animal fallback for
+        // legacy rows).
+        val signedId = com.pashurakshak.app.data.remote.QrPayloads.verifyAndExtractId(qrCodeId)
         val expected = report?.qrCodeId?.takeIf { it.isNotBlank() }
             ?: _uiState.value.animal?.qrCodeId
-        val matches = expected != null && qrCodeId.trim() == expected.trim()
+        val matches = signedId != null && expected != null && signedId == expected
         _uiState.update {
             it.copy(
                 isQrScanned = true,
                 scannedQrCodeId = qrCodeId,
                 qrVerified = matches,
-                error = if (matches) null else "This QR code does not match this case. Scan the QR shown for this report first.",
+                error = when {
+                    signedId == null -> "QR code signature is invalid or forged."
+                    !matches -> "This QR code does not match this case. Scan the QR shown for this report first."
+                    else -> null
+                },
                 notice = if (matches) "QR verified for this case" else null,
             )
         }
@@ -239,18 +256,27 @@ class CaseDetailViewModel(
                     connection.doOutput = true
                     connection.setRequestProperty("Content-Type", "application/json")
                     connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
+                    connection.setRequestProperty("Idempotency-Key", visitId)
                     connection.setRequestProperty("Authorization", "Bearer $sessionToken")
                     connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                     val code = connection.responseCode
                     if (code !in 200..299) {
                         val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                        // A 409 qr_mismatch means no QR verification happened, so the
+                        // report status, local verification row and farmer alert are
+                        // left untouched; show the friendly QR error instead.
+                        val parsed = runCatching { JSONObject(body) }.getOrNull()
+                        if (code == 409 && parsed?.optString("error") == "qr_mismatch") {
+                            throw IOException("QR code did not match this animal")
+                        }
                         throw IOException("POST /visits failed (HTTP $code): $body")
                     }
                     val body = connection.inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(body)
-                    val matched = json.optBoolean("matched", false)
+                    val matched = json.optJSONObject("visit")?.optInt("matched", 0) == 1 ||
+                        json.optBoolean("matched", false)
                     if (!matched) {
-                        throw IOException("QR code did not match this animal — verification failed")
+                        throw IOException("QR code did not match this report — verification failed")
                     }
                     // Update report status with vet_assessment and assigned_vet_id
                     reportRepository.update(
@@ -259,9 +285,22 @@ class CaseDetailViewModel(
                             vetAssessment = assessmentText,
                             assignedVetId = vetId,
                             synced = false,
+                            qrVerified = true,
+                            verifiedAt = System.currentTimeMillis(),
+                            verifiedBy = vetId,
                         )
                     )
                     SyncScheduler.triggerNow(ServiceLocator.context)
+                    runCatching {
+                        reportRepository.insertVisitVerification(
+                            reportId = report.id,
+                            scannedQrCodeId = qrCodeId,
+                            latitude = latitude,
+                            longitude = longitude,
+                            assessment = assessmentText.ifBlank { assessment },
+                            matched = 1,
+                        )
+                    }
                     val animalLabel = state.animal?.let { "${it.name} (${it.species})" }
                         ?: "Animal ${report.animalId.take(8)}"
                     alertRepository.insert(
@@ -279,6 +318,9 @@ class CaseDetailViewModel(
                                 status = ReportStatus.EXAMINED,
                                 vetAssessment = assessmentText,
                                 assignedVetId = vetId,
+                                qrVerified = true,
+                                verifiedAt = System.currentTimeMillis(),
+                                verifiedBy = vetId,
                             ),
                         )
                     }

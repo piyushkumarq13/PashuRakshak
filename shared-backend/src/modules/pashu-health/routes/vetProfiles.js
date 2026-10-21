@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
-import { verifySession } from '../../../core/middleware/verifySession.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -16,7 +16,7 @@ function str(value) {
  * Accepts { pincode, serviceAreas: string[] }.
  * Upserts into pashu_vet_profiles keyed by the session user's id.
  */
-router.post('/', verifySession, async (req, res) => {
+router.post('/', verifySession, requireRole('vet'), async (req, res) => {
   const pincode = str(req.body?.pincode);
   const serviceAreas = req.body?.serviceAreas;
 
@@ -81,7 +81,7 @@ router.post('/', verifySession, async (req, res) => {
  * Protected by verifyAppKey + verifySession.
  * Returns the current vet's own profile or 404.
  */
-router.get('/me', verifySession, async (req, res) => {
+router.get('/me', verifySession, requireRole('vet'), async (req, res) => {
   try {
     const userResult = await db.execute({
       sql: 'SELECT id FROM users WHERE id = ?',

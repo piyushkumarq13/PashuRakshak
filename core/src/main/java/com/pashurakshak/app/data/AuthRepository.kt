@@ -5,12 +5,16 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.messaging.FirebaseMessaging
 import com.pashurakshak.app.BuildConfig
 import com.pashurakshak.app.data.local.TursoClient
+import com.pashurakshak.app.di.ServiceLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
 
 /**
  * Custom backend auth — no Firebase Auth.
@@ -47,7 +51,7 @@ class AuthRepository(private val db: TursoClient) {
 
     /* ───────────────────────── Farmer ───────────────────────── */
 
-    suspend fun checkFarmer(phone: String): Result<FarmerCheck> = io {
+    suspend fun checkFarmer(phone: String): Result<FarmerCheck> = resultIo {
         val (code, json) = post("/api/v1/auth/farmer/check", JSONObject().put("phone", phone), auth = false)
         if (code !in 200..299) throw IOException(json.optString("message", "Account check failed"))
         Result.success(
@@ -60,7 +64,7 @@ class AuthRepository(private val db: TursoClient) {
         )
     }
 
-    suspend fun loginFarmer(phone: String, pin: String): AuthResult = io {
+    suspend fun loginFarmer(phone: String, pin: String): AuthResult = authIo {
         val (code, json) = post(
             "/api/v1/auth/farmer/login",
             JSONObject().put("phone", phone).put("pin", pin),
@@ -78,7 +82,7 @@ class AuthRepository(private val db: TursoClient) {
         animalCount: Int?,
         village: String,
         pincode: String,
-    ): AuthResult = io {
+    ): AuthResult = authIo {
         val body = JSONObject()
             .put("verifyToken", verifyToken)
             .put("phone", phone)
@@ -92,7 +96,7 @@ class AuthRepository(private val db: TursoClient) {
         authResultFrom(code, json)
     }
 
-    suspend fun resetFarmerPin(verifyToken: String, pin: String): AuthResult = io {
+    suspend fun resetFarmerPin(verifyToken: String, pin: String): AuthResult = authIo {
         val (code, json) = post(
             "/api/v1/auth/farmer/reset-pin",
             JSONObject().put("verifyToken", verifyToken).put("pin", pin),
@@ -103,7 +107,7 @@ class AuthRepository(private val db: TursoClient) {
 
     /* ───────────────────────── Vet (app login only — registration is on the web) ───────────────────────── */
 
-    suspend fun loginVet(phone: String, credential: String): AuthResult = io {
+    suspend fun loginVet(phone: String, credential: String): AuthResult = authIo {
         val body = JSONObject()
             .put("phone", phone)
             .put("credential", credential)
@@ -112,7 +116,7 @@ class AuthRepository(private val db: TursoClient) {
         authResultFrom(code, json)
     }
 
-    suspend fun resetVetPin(verifyToken: String, pin: String): AuthResult = io {
+    suspend fun resetVetPin(verifyToken: String, pin: String): AuthResult = authIo {
         val (code, json) = post(
             "/api/v1/auth/vet/reset-pin",
             JSONObject().put("verifyToken", verifyToken).put("pin", pin).put("pinType", "pin"),
@@ -123,7 +127,7 @@ class AuthRepository(private val db: TursoClient) {
 
     /* ───────────────────────── OTP ───────────────────────── */
 
-    suspend fun sendOtp(email: String, purpose: String, phone: String? = null): Result<OtpSendInfo> = io {
+    suspend fun sendOtp(email: String, purpose: String, phone: String? = null): Result<OtpSendInfo> = resultIo {
         val body = JSONObject().put("email", email).put("purpose", purpose)
         if (!phone.isNullOrBlank()) body.put("phone", phone)
         val (code, json) = post("/api/v1/auth/otp/send", body, auth = false)
@@ -157,6 +161,15 @@ class AuthRepository(private val db: TursoClient) {
         profile: JSONObject?,
         role: SessionManager.Role,
     ) {
+        val newUid = user.optString("id")
+        val previousUid = SessionManager.uid
+        if (
+            SessionManager.needsLocalDataWipe ||
+            (previousUid != null && newUid.isNotBlank() && previousUid != newUid)
+        ) {
+            // Never let a new account inherit an expired/previous user's rows or photos.
+            ServiceLocator.clearLocalData()
+        }
         val profileComplete = profile != null && !profile.isNull("village")
         SessionManager.establishSession(
             token = token,
@@ -316,6 +329,26 @@ class AuthRepository(private val db: TursoClient) {
     }
 
     private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) { block() }
+
+    private suspend fun authIo(block: suspend () -> AuthResult): AuthResult =
+        try {
+            io(block)
+        } catch (error: Exception) {
+            AuthResult.Failure(networkMessage(error), "network")
+        }
+
+    private suspend fun <T> resultIo(block: suspend () -> Result<T>): Result<T> =
+        try {
+            io(block)
+        } catch (error: Exception) {
+            Result.failure(if (error is OtpException) error else OtpException(networkMessage(error), "network", null))
+        }
+
+    private fun networkMessage(error: Throwable): String = when (error) {
+        is UnknownHostException, is ConnectException, is SocketTimeoutException ->
+            "You're offline. Check your internet connection and try again."
+        else -> error.message?.takeIf { it.isNotBlank() } ?: "Could not reach the server. Try again."
+    }
 
     /** OTP endpoint failures → user-facing message with optional rate-limit wait. */
     class OtpException(

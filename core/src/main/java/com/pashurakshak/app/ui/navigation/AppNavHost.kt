@@ -171,7 +171,9 @@ fun AppNavHost(
             // Farmer
             composable(Screen.FarmerHome.route) {
                 FarmerHomeScreen(
-                    onOpenMyReports = { navController.navigate(Screen.MyReports.route) },
+                    onOpenMyReports = { filter ->
+                        navController.navigate("${Screen.MyReports.route}?filter=$filter")
+                    },
                     onOpenAnimals = { navController.navigate(Screen.MyAnimals.route) },
                     onOpenReport = { navController.navigate(Screen.ReportSickAnimal.route) },
                     onOpenVaccination = { navController.navigate(Screen.VaccinationStatus.route) },
@@ -227,13 +229,30 @@ fun AppNavHost(
             // Vet
             composable(Screen.VetHome.route) {
                 VetHomeScreen(
-                    onOpenCaseQueue = { navController.navigate(Screen.VetCaseQueue.route) },
+                    onOpenCaseQueue = { filter ->
+                        navController.navigate("${Screen.VetCaseQueue.route}?filter=$filter")
+                    },
                     onOpenAlerts = { navController.navigate(Screen.VetAlerts.route) },
                     onOpenProfile = { navController.navigate(Screen.Profile.route) },
                 )
             }
-            composable(Screen.VetCaseQueue.route) {
+            composable(
+                route = "${Screen.VetCaseQueue.route}?filter={filter}",
+                arguments = listOf(
+                    androidx.navigation.navArgument("filter") {
+                        type = androidx.navigation.NavType.StringType
+                        defaultValue = "ongoing"
+                    },
+                ),
+            ) { entry ->
+                val filterName = entry.arguments?.getString("filter") ?: "ongoing"
+                val filter = when (filterName) {
+                    "examined" -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.EXAMINED
+                    "high_risk" -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.HIGH_RISK
+                    else -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.ONGOING
+                }
                 VetCaseQueueScreen(
+                    filter = filter,
                     onReportClick = { reportId ->
                         navController.navigate(Screen.CaseDetail.withReportId(reportId)) {
                             launchSingleTop = true
@@ -267,8 +286,17 @@ fun AppNavHost(
                     recipientId = null,
                 )
             }
-            composable(Screen.MyReports.route) {
+            composable(
+                route = "${Screen.MyReports.route}?filter={filter}",
+                arguments = listOf(
+                    androidx.navigation.navArgument("filter") {
+                        type = androidx.navigation.NavType.StringType
+                        defaultValue = "all"
+                    },
+                ),
+            ) { entry ->
                 MyReportsScreen(
+                    filter = entry.arguments?.getString("filter") ?: "all",
                     onReportClick = { reportId ->
                         navController.navigate(Screen.AiInsight.withReportId(reportId)) {
                             launchSingleTop = true

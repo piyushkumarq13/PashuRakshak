@@ -54,10 +54,12 @@ fun VetCaseQueueScreen(
     onReportClick: (reportId: String) -> Unit,
     onQrScanClick: (reportId: String) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: VetCaseQueueViewModel = viewModel {
+    filter: VetCaseQueueViewModel.QueueFilter = VetCaseQueueViewModel.QueueFilter.ONGOING,
+    viewModel: VetCaseQueueViewModel = viewModel(key = filter.name) {
         VetCaseQueueViewModel(
             reportRepository = ServiceLocator.reportRepository,
             animalRepository = ServiceLocator.animalRepository,
+            filter = filter,
         )
     },
 ) {
@@ -84,11 +86,19 @@ fun VetCaseQueueScreen(
                 .padding(innerPadding),
         ) {
             ScreenHeader(
-                title = "Case Queue",
+                title = when (filter) {
+                    VetCaseQueueViewModel.QueueFilter.ONGOING -> "Case Queue"
+                    VetCaseQueueViewModel.QueueFilter.EXAMINED -> "Examined Cases"
+                    VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "High-Risk Cases"
+                },
                 subtitle = if (state.items.isNotEmpty()) {
-                    "${state.items.size} case${if (state.items.size == 1) "" else "s"} awaiting triage"
+                    "${state.items.size} case${if (state.items.size == 1) "" else "s"}"
                 } else {
-                    "Farmer reports sorted by risk"
+                    when (filter) {
+                        VetCaseQueueViewModel.QueueFilter.ONGOING -> "Farmer reports awaiting triage"
+                        VetCaseQueueViewModel.QueueFilter.EXAMINED -> "Cases you have examined"
+                        VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "Ongoing high-risk reports"
+                    }
                 },
             )
             state.error?.let { error ->
@@ -106,8 +116,16 @@ fun VetCaseQueueScreen(
                 state.items.isEmpty() -> {
                     EmptyState(
                         icon = Icons.Default.Pets,
-                        title = "All clear",
-                        message = "No pending cases right now. New farmer reports will appear here.",
+                        title = when (filter) {
+                            VetCaseQueueViewModel.QueueFilter.ONGOING -> "All clear"
+                            VetCaseQueueViewModel.QueueFilter.EXAMINED -> "No examined cases"
+                            VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "No high-risk cases"
+                        },
+                        message = when (filter) {
+                            VetCaseQueueViewModel.QueueFilter.ONGOING -> "No pending cases right now. New farmer reports will appear here."
+                            VetCaseQueueViewModel.QueueFilter.EXAMINED -> "Examined and sample-sent cases will appear here."
+                            VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "High-risk ongoing cases will appear here."
+                        },
                     )
                 }
 
@@ -131,6 +149,7 @@ fun VetCaseQueueScreen(
                                     onClick = { onReportClick(item.report.id) },
                                     onQrScanClick = { onQrScanClick(item.report.id) },
                                     onMarkExamined = { viewModel.markAsExamined(item.report.id) },
+                                    showActions = filter != VetCaseQueueViewModel.QueueFilter.EXAMINED,
                                 )
                             }
                         }
@@ -147,6 +166,7 @@ private fun QueueCard(
     onClick: () -> Unit,
     onQrScanClick: () -> Unit,
     onMarkExamined: () -> Unit,
+    showActions: Boolean = true,
 ) {
     val levelColor = item.riskLevel.color()
     Surface(
@@ -235,6 +255,7 @@ private fun QueueCard(
                     )
                 }
 
+                if (showActions) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -267,6 +288,7 @@ private fun QueueCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(text = "Examined", style = MaterialTheme.typography.labelLarge)
                     }
+                }
                 }
             }
         }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getMe, getMyApplication, getToken, setToken, vetSetupPin } from './api'
+import { AUTH_EXPIRED_EVENT, getMe, getMyApplication, getToken, setToken, vetSetupPin } from './api'
 import RegisterStart from './components/RegisterStart'
 import OtpVerify from './components/OtpVerify'
 import SetCredential from './components/SetCredential'
@@ -55,6 +55,18 @@ export default function App() {
   useEffect(() => {
     loadSession()
   }, [loadSession])
+
+  useEffect(() => {
+    function onAuthExpired() {
+      setUser(null)
+      setApplication(null)
+      setHeaderAuthed(false)
+      setFlow({ email: null, phone: null, purpose: null, verifyToken: null })
+      setStage('landing')
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired)
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired)
+  }, [])
 
   const handleAuthResponse = useCallback(
     async (data) => {

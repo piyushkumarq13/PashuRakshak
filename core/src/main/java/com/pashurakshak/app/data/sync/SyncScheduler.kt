@@ -58,4 +58,10 @@ object SyncScheduler {
             request,
         )
     }
+
+    /** Stops queued/periodic sync on sign-out so no old-session work runs. */
+    fun cancel(context: Context) {
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(PERIODIC_WORK_NAME)
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(IMMEDIATE_WORK_NAME)
+    }
 }

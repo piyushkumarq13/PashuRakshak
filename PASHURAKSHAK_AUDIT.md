@@ -189,16 +189,22 @@ Onboarding — `ui/OnboardingScreen.kt` + VM
 - Shown when logged in but profileComplete == false.
 
 Farmer Home — `ui/HomeScreens.kt:88` + `HomeViewModel.kt`
-- Greeting, stat cards (animals/reports/active), tiles: Report sick
-  animal, Vaccination, My reports, My animals; debug B2 test tile gated by
-  `BuildConfig.DEBUG` (`HomeScreens.kt:234-259`); unread-alert badge;
-  rotating DAILY_TIPS (`:70-86`); vaccinations due within 30 days
-  (`HomeViewModel.kt:65-84`); local-first then `RemoteSync.pullAll()`
-  (`:41-63`).
+- Greeting, stat cards: Reports / Active(ongoing) / Examined (new third
+  card), tiles: Report sick animal, Vaccination, My reports, My animals;
+  debug B2 test tile gated by `BuildConfig.DEBUG` (`HomeScreens.kt:234-259`);
+  unread-alert badge; rotating DAILY_TIPS (`:70-86`); local-first then
+  `RemoteSync.pullAll()` (`HomeViewModel.kt:41-63`).
+- Counts (HomeViewModel.kt:76-98): activeReportCount/ongoingReportCount =
+  reports in REPORTED or VET_ASSIGNED; examinedReportCount = EXAMINED/
+  SAMPLE_SENT/CONFIRMED/RESOLVED; highRiskReportCount = ongoing AND
+  riskScore >= 60. Overview lines for each of the three. Each card passes
+  its filter ("all"|"ongoing"|"examined") to MyReports.
 
 Vet Home — `ui/HomeScreens.kt:588` + `VetHomeViewModel.kt`
-- In queue / High risk / Examined counts, tiles: Case queue, Outbreak
-  alerts, Profile. Same local-first + pull pattern (`:35-55`).
+- In queue / High risk / Examined counts (distinct filters), tiles: Case
+  queue, Outbreak alerts, Profile. Same local-first + pull pattern
+  (`:35-55`). Each stat card navigates with its filter:
+  "ongoing"|"high_risk"|"examined".
 
 Report sick animal — `ui/farmer/ReportSickAnimalScreen.kt` + VM
 - Animal dropdown, symptom FilterChips, up to 5 photos (camera via
@@ -207,10 +213,16 @@ Report sick animal — `ui/farmer/ReportSickAnimalScreen.kt` + VM
   "Use current location" (play-services-location), risk preview, post-submit
   AI dialog.
 - Risk score is computed CLIENT-SIDE placeholder table
-  (`ReportSickAnimalViewModel.kt:23-37`).
-- submit() (`:188-270`) inserts report locally, inserts local alerts, posts
-  directly via `ReportPushApi`, on failure falls back to
-  `SyncScheduler.triggerNow` (`:250-266`).
+  (`ReportSickAnimalViewModel.kt:23-37`), PLUS an optional AI analysis
+  via `ServiceLocator.aiRiskApi` (POST /api/v1/pashu-health/reports/analyze-risk).
+  NOTE: that backend endpoint does NOT exist in shared-backend, so the AI
+  call always fails and falls back to the rule-based score ("AI analysis
+  unavailable, using rule-based score").
+- submit() (`ReportSickAnimalViewModel.kt:273-...`) ALWAYS runs
+  performAiAnalysis() first when no aiScore is cached and there are
+  symptoms/description, so the submitted riskBreakdown includes an
+  "ai_score" entry (which will simply never be there until the backend
+  endpoint exists). On push failure falls back to `SyncScheduler.triggerNow`.
 - `ReportPushApi.kt:30-53` POSTs `/api/v1/pashu-health/reports` and parses
   `aiAdvisory` from the response.
 
@@ -221,7 +233,13 @@ My animals — `ui/farmer/MyAnimalsScreen.kt` + VM
 
 My reports — `ui/farmer/MyReportsScreen.kt` + VM
 - Cards with risk stripe, status chip, symptoms, thumbnail; tap opens
-  AiInsight chat (`AppNavHost.kt:270-278`).
+  AiInsight chat (`AppNavHost.kt:270-278`). Accepts `filter` nav arg
+  ("all"|"ongoing"|"examined") — ongoing = REPORTED/VET_ASSIGNED,
+  examined = item.vetVisited (`MyReportsScreen.kt:67-80`). When
+  item.vetVisited the per-card QR button is hidden and a "Case verified"
+  pill + "QR code of this case is verified — no longer needed." note is
+  shown; `report.vetAssessment` is rendered as "Vet note: ...".
+  (MyReportsScreen.kt:261-330).
 
 Vaccinations — `ui/farmer/VaccinationStatusScreen.kt` + VM
 - Overdue styling; add/delete/edit push to backend
@@ -237,20 +255,40 @@ QR passport (farmer) — `ui/farmer/QrPassportScreen.kt` + VM
   farmer does NOT scan.
 
 Vet case queue — `ui/vet/VetCaseQueueScreen.kt` + VM
-- Queue of REPORTED / VET_ASSIGNED sorted by risk (`VetCaseQueueViewModel.kt:81-98`);
-  "Scan QR" (auto-opens scanner on case detail) and "Examined"
-  (`:45-59`) actions.
+- Queue of cases sorted by risk (`VetCaseQueueViewModel.kt:76-98`), with
+  QueueFilter enum {ONGOING, EXAMINED, HIGH_RISK}: ONGOING = REPORTED/
+  VET_ASSIGNED; EXAMINED = EXAMINED/SAMPLE_SENT/CONFIRMED/RESOLVED;
+  HIGH_RISK = ongoing && riskLevelFor(score)==HIGH. VM keyed by filter
+  (`VetCaseQueueScreen.kt:57-63`); "Scan QR" (auto-opens scanner on case
+  detail) and "Examined" (`:45-59`) actions shown only when filter !=
+  EXAMINED (`showActions` `:149`,`:255`). Titles/empty states vary by
+  filter. Vet bottom-bar "Cases" navigates with `?filter=ongoing`
+  (`VetBottomBar.kt:44-50`).
 
 Case detail (vet) — `ui/vet/CaseDetailScreen.kt` + VM
 - Risk card, "Why this score?" breakdown (client placeholder,
   `CaseDetailScreen.kt:616`), QR scan button, assessment chips
   (risky/moderate/mild), location fields, submit.
-- `submitVisit` POSTs `/api/v1/pashu-health/visits`, REQUIRES response
-  `matched == true` (`CaseDetailViewModel.kt:179-267`), then marks report
-  EXAMINED, sets assignedVetId, triggers sync (`:234`), inserts farmer alert.
-- Known issue: `canSubmitVisit` (`CaseDetailViewModel.kt:51-57`) requires
-  `assessmentText.isNotBlank()`, but the screen never wires a field to
-  `onAssessmentTextChanged` — submit appears un-enableable as built.
+- `submitVisit` POSTs `/api/v1/pashu-health/visits`
+  (`CaseDetailViewModel.kt:179-267`). Response parsing (FIXED): reads
+  `json.visit.matched == 1` with fallback to top-level boolean
+  (`CaseDetailViewModel.kt:264-266`) — previously it read a top-level
+  `matched` which the server never sends (server wraps it in `visit`), so
+  every visit incorrectly threw "QR code did not match". On success it
+  updates report status EXAMINED + assignedVetId + vetAssessment, triggers
+  sync, inserts a farmer alert, and inserts a LOCAL pashu_visit_verifications
+  row (matched=1) (`CaseDetailViewModel.kt:277-289`).
+- QR-verified visits and field checks are recorded locally via
+  `ReportRepository.insertVisitVerification` (`ReportRepository.kt:125-144`),
+  and submitFieldCheck ({:122-148}) now persists vetAssessment, writes a
+  local visit row with assessment text (matched=1 even when no QR scan),
+  and triggers sync.
+- QR "Assessment notes" text field IS wired to
+  `viewModel.onAssessmentTextChanged` (`CaseDetailScreen.kt:380-386`), so
+  `canSubmitVisit` (VM:51-57: needs scanned QR + assessment chip +
+  non-blank notes + valid lat/long) is satisfiable from the UI.
+- Farmer cards show "Case verified" pill + hidden QR button once
+  vetVisited.
 
 AI insight — `ui/aiInsight/AiInsightScreen.kt` + VM
 - Chat UI with markdown renderer; GET then word-by-word reveal of POST reply
@@ -314,6 +352,10 @@ OFFLINE QUEUE + AUTO-SYNC
   (`NetworkReconnectObserver.kt:29-34`), after visit submit
   (`CaseDetailViewModel.kt:234`), after report push failure
   (`ReportSickAnimalViewModel.kt:250-266`).
+- `RemoteSync.upsertFromRemote` behavior changed: when the local row has
+  `synced = 0` (unpushed local changes, e.g. vet marked EXAMINED), a stale
+  remote row no longer overwrites it — only `photoRemoteUrl` is merged in
+  (`ReportRepository.kt:147-163`).
 - RemoteSync pull coalescing: 4 s min interval + pullMutex (`RemoteSync.kt:39-42`).
 - `SyncStatusBanner` shows "N reports pending sync"/"Syncing…" (refreshes
   pending count every 30 s).
@@ -760,15 +802,21 @@ Verification (visits.js):
 - INSERT pashu_visit_verifications (id, report_id, vet_id,
   scanned_qr_code_id, matched, latitude, longitude, verified_at).
 - UPDATE pashu_symptom_reports SET vet_assessment=assessment,
-  status='examined'. Client-side also REQUIRES matched==true, else shows
-  "QR code did not match" and aborts (CaseDetailViewModel.kt:221-224).
+  status='examined'.
+- Client-side response parsing (FIXED): reads `json.visit.matched == 1`
+  with fallback to a top-level boolean (CaseDetailViewModel.kt:264-266) —
+  previously it read a top-level `matched` the server never sends (server
+  wraps it in `visit`), so every visit incorrectly failed with "QR code
+  did not match". When matched is falsy the client shows "QR code did
+  not match this report — verification failed" and aborts
+  (:267-270). On success it also persists a LOCAL pashu_visit_verifications
+  row (matched=1) (:277-289).
+  Note: backend itself records matched=0 and still sets status='examined'
+  — enforcement lives only in the Android client.
 - assessment === 'risky' -> INSERT pashu_gov_alerts {severity:'high',
   message "Gov alert: <species> in <village> flagged as risky — field
   visit verified by vet", acknowledged:0}. moderate/mild produce NO gov
   alert.
-Note: backend does not enforce matched=1 (it records matched=0 and still
-sets status='examined'); enforcement lives only in the Android client.
-
 E) AI ADVISORY & CHAT — Groq.
 File: shared-backend/src/modules/pashu-health/services/aiAdvisory.js.
 Provider/model: Groq, model 'openai/gpt-oss-120b' (:8). NOTE README says
@@ -1061,9 +1109,12 @@ HEALTH CHECK / LOGGING
 5. Vet assessment.
    risky/moderate/mild saved to vet_assessment + visit_verifications.
    risky -> pashu_gov_alerts row. WORKING (server-side write path fully
-   functional). NOTE app-side submit-button likely broken because
-   canSubmitVisit requires assessmentText which no UI field sets
-   (CaseDetailViewModel.kt:51-57; screen never wires onAssessmentTextChanged).
+   functional). The "Assessment notes" field that canSubmitVisit needs IS
+   wired in the UI (CaseDetailScreen.kt:380-386), so the visit form is
+   submittable when scanned QR + chip + notes + lat/long are present.
+   NOTE: POST /visits client parsing was fixed (visit.matched); previously
+   the app always reported "QR code did not match" because it looked for a
+   top-level matched the server never sends.
 
 6. AI advisory shown to farmer; chat.
    aiAdvisory returned on POST /reports and shown post-submit; chat GET/POST
@@ -1109,6 +1160,10 @@ MISSING FEATURES (NOT IMPLEMENTED)
 - B2 file uploads happen only from Android (backend can't ingest photos);
   server holds B2 keys but never uses them.
 - vet-registration README endpoint table is stale/wrong.
+- POST /api/v1/pashu-health/reports/analyze-risk referenced by the app
+  (AiRiskApi) but not implemented on the backend.
+- pashu_visit_verifications rows written locally are never uploaded by
+  RemoteSync — the local proof stays on the device.
 - shared-backend README says AI model llama-3.3-70b-versatile; code uses
   openai/gpt-oss-120b.
 
@@ -1135,8 +1190,14 @@ DUPLICATED / DEAD CODE
 - TursoClient.kt:17 doc says remote Turso sync "later phase" — stale.
 
 ERROR-PRONE AREAS / LIKELY BUGS
-- CaseDetailViewModel.canSubmitVisit requires assessmentText which the UI
-  never sets -> "Submit Visit Verification" appears permanently disabled.
+- POST /api/v1/pashu-health/reports/analyze-risk is called by the app
+  (AiRiskApi) but does NOT exist in the backend -> every risk pre-analysis
+  fails and falls back to the rule-based score; submit() now always
+  performs this doomed call first, adding a network round-trip of latency.
+- "Mark examined" (CaseDetailViewModel.submitFieldCheck) writes a LOCAL
+  pashu_visit_verifications row with matched=1 even when NO QR was scanned
+  (scannedQrCodeId blank) — pollutes local visit history; sync does not
+  upload visit rows (no push path for pashu_visit_verifications).
 - Auto-assignment has no ORDER BY -> nondeterministic vet selection.
 - Post-save AI pipeline failures swallowed (by design for resilience, but
   also silent inconsistency risk: reports may remain uncategorized).
@@ -1182,13 +1243,13 @@ CAN BE DEMONSTRATED LIVE TODAY WITHOUT FAKING:
 - Gov portal: login via seeded magistrate OTP, overview, approve/reject
   applications scoped to district, reports table, clusters, gov alerts,
   users listing.
-- Vet app: login (after approval), case queue, case detail, QR scan,
-  assessment (NOTE likely submit-button blocker).
+- Vet app: login (after approval), case queue (with ONGOING/EXAMINED/
+  HIGH_RISK filters), case detail, QR scan, assessment notes + visit
+  verification (visit.matched parsing fixed; "Case verified" pill on
+  farmer's report card).
 
 NEEDED FOR A REAL 20-30 FARMER PILOT:
 - Add google-services.json for com.pashurakshak.vet so vet gets FCM.
-- Fix CaseDetailViewModel.canSubmitVisit / wire assessment text (or drop
-  the assessmentText requirement) so visits can be submitted from the UI.
 - Enforce QR match server-side (reject status change when matched=0).
 - Replace hardcoded fallback app keys/API URLs in web api.js and
   core/build.gradle.kts with required env config; rotate the keys + B2
@@ -1226,10 +1287,13 @@ NEEDED FOR A REAL 20-30 FARMER PILOT:
 | Offline report queue + 15-min/reconnect sync | Working | core/src/main/java/com/pashurakshak/app/data/sync/SyncWorker.kt |
 | B2 photo capture/upload + retries | Working (farmer APK) | core/.../data/remote/B2UploadService.kt |
 | Risk score (client placeholder bands) | Mocked/Placeholder | core/.../ui/farmer/ReportSickAnimalViewModel.kt:23 |
+| AI pre-analysis call to /reports/analyze-risk | Not implemented (endpoint missing on server; app falls back) | core/.../data/remote/AiRiskApi.kt |
 | Server risk categorization (60/30 + cluster->high) | Working (rule-based) | shared-backend/.../clusterDetection.js:138 |
 | Cluster detection (7d/5km/3+, single-linkage) | Working | shared-backend/.../clusterDetection.js:45 |
 | Vet auto-assignment (village LIKE match) | Partial | shared-backend/.../clusterDetection.js:158 |
-| QR visit verification | Partial (server doesn't enforce match; app submit likely blocked) | shared-backend/src/modules/pashu-health/routes/visits.js |
+| QR visit verification | Partial (server doesn't enforce match; client parsing fixed) | shared-backend/src/modules/pashu-health/routes/visits.js |
+| "Mark examined" via CaseDetail submitFieldCheck | Working but writes local visit row with matched=1 w/o scan | core/.../ui/vet/CaseDetailViewModel.kt:122 |
+| Home/queue status filters (all/ongoing/examined/high_risk) | Working | core/.../ui/vet/VetCaseQueueViewModel.kt:29 |
 | AI advisory (Groq gpt-oss-120b) | Working w/ GROQ_API_KEY | shared-backend/.../services/aiAdvisory.js |
 | AI chat w/ 20-msg context cap, full history | Working w/ GROQ_API_KEY | shared-backend/.../routes/aiChat.js |
 | Push notifications to vet (cluster) | Partial (vet APK lacks FCM config) | core/.../data/remote/PushMessagingService.kt |
@@ -1240,7 +1304,6 @@ NEEDED FOR A REAL 20-30 FARMER PILOT:
 | vet-registration web (register/application/status) | Working (no profile edit) | vet-registration/src/App.jsx |
 | Language toggle (hi/en) | Partial — stored + AI language only | core/.../ui/components/AppComponents.kt:588 |
 | OTP debug page /otp | Working (dev backdoor) | shared-backend/src/app.js |
-| CaseDetail "assessment text" submit path | Likely broken (no UI wiring) | core/.../ui/vet/CaseDetailViewModel.kt:51 |
 | Server-side QR match enforcement | Not implemented | shared-backend/.../routes/visits.js |
 | Logout / token revocation | Not implemented | — |
 | Rate limiting beyond OTP | Not implemented | — |

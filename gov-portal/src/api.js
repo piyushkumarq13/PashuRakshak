@@ -1,7 +1,9 @@
-const BASE = import.meta.env.VITE_API_BASE_URL || 'https://pashurakshak-ilol.onrender.com'
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || 'https://pashurakshak-ilol.onrender.com'
+const BASE = String(RAW_BASE).replace(/\/+$/, '')
 const APP_KEY = import.meta.env.VITE_APP_API_KEY || '46108593bdff58a2952c1ed83649a6e24f8c7b37405aeee9744c035189e25db9'
 
 const TOKEN_KEY = 'gov_portal_token'
+export const AUTH_EXPIRED_EVENT = 'pashurakshak:auth-expired'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
@@ -25,6 +27,10 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     })
     const data = await res.json().catch(() => ({}))
+    if (res.status === 401 && auth && token) {
+      setToken(null)
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+    }
     return { status: res.status, data }
   } catch {
     return {

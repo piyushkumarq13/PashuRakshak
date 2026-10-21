@@ -730,11 +730,11 @@ All other routes only use `verifyAppKey`.
 
 ### Has Any App Been Registered via `POST /api/v1/core/apps`?
 
-The database is a remote Turso instance. I cannot query it directly in this audit without the admin secret. The git commit `e3fcd80` says "Fix camera permission crash, add bidirectional cloud sync, harden backend" — the system has been actively used. The admin secret is `dev-admin-secret-1234567890abcdef` (from `.env`), but I will not make live API calls.
+The database is a remote Turso instance. I cannot query it directly in this audit without the admin secret. The git commit `e3fcd80` says "Fix camera permission crash, add bidirectional cloud sync, harden backend" — the system has been actively used. The admin secret is `<redacted-admin-secret>` (from `.env`), but I will not make live API calls.
 
 ### Is `ADMIN_SECRET` Set or Placeholder?
 
-**Set.** From `.env`: `ADMIN_SECRET=dev-admin-secret-1234567890abcdef`. This is **not** the placeholder value (`change-me-to-a-long-random-string` from `.env.example`). It has been replaced with a developer-style value. It is **not** cryptographically strong.
+**Set.** From `.env`: `ADMIN_SECRET=<redacted-admin-secret>`. This is **not** the placeholder value (`change-me-to-a-long-random-string` from `.env.example`). It has been replaced with a developer-style value. It is **not** cryptographically strong.
 
 ---
 
@@ -854,9 +854,9 @@ Filled vs empty keys (confirming presence without revealing values):
 - `CORS_ALLOWED_ORIGINS` — **FILLED** (value `http://localhost:3000,http://localhost:5173`)
 - `ADMIN_SECRET` — **FILLED** (not the placeholder)
 - `FIREBASE_SERVICE_ACCOUNT_JSON` — **FILLED** (real service account JSON for `pashurakshak-961c1`)
-- `B2_APPLICATION_KEY_ID` — **FILLED** (value `b191a6363707`)
-- `B2_APPLICATION_KEY` — **FILLED** (value `00547285064cf5d2a06d9ecab8db40d09231752890`)
-- `B2_BUCKET_NAME` — **FILLED** (value `pashurakshak-reports`)
+- `B2_APPLICATION_KEY_ID` — **FILLED** (`<redacted; rotate if exposed>`)
+- `B2_APPLICATION_KEY` — **FILLED** (`<redacted; rotate if exposed>`)
+- `B2_BUCKET_NAME` — **FILLED** (`<redacted>`)
 
 ### Firebase Service Account
 
@@ -1190,7 +1190,7 @@ The Android uses `Migrations.kt` with `PRAGMA user_version`; the backend uses `m
 | **Environment** | All `.env.example` keys filled in `.env` with real values |
 | **TODOs/Stubs** | None in backend. 3 intentional placeholders in Android |
 | **Missing features** | No vets/farmers endpoints, no B2 backend integration, schema naming divergence |
-| **Security** | `.env` git-ignored, but `ADMIN_SECRET` is weak (`dev-admin-secret-1234567890abcdef`) |
+| **Security** | `.env` git-ignored, but `ADMIN_SECRET` is weak (`<redacted-admin-secret>`) |
 | **Dependencies** | `uuid` moderate vulnerability in transitive dependency tree |
 | **Deployment** | Render-ready, `npm start` matches `render.yaml`. `PORT=10000` in Render vs `PORT=3000` in `.env` |
 | **Architecture** | Two independent databases (Android local libSQL + backend remote Turso) syncing via HTTP |

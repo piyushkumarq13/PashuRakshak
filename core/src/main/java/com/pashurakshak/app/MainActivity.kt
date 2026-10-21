@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         pendingDestination.value = intent.getStringExtra(EXTRA_DESTINATION)
     }
 

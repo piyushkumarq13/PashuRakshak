@@ -18,6 +18,9 @@ data class HomeUiState(
     val animalCount: Int = 0,
     val reportCount: Int = 0,
     val activeReportCount: Int = 0,
+    val ongoingReportCount: Int = 0,
+    val examinedReportCount: Int = 0,
+    val highRiskReportCount: Int = 0,
     val unreadAlertCount: Int = 0,
     val vaccinationsDue: Int = 0,
     val error: String? = null,
@@ -73,11 +76,25 @@ class HomeViewModel(
         val dueSoon = vaccinations.count { it.nextDue in now..soon || it.nextDue < now }
         val alerts = alertRepository.getAll()
             .filter { it.recipientRole == "farmer" && it.recipientId == farmerId }
+        val ongoing = reports.count {
+            it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
+        }
+        val examined = reports.count {
+            it.status == ReportStatus.EXAMINED || it.status == ReportStatus.SAMPLE_SENT ||
+                it.status == ReportStatus.CONFIRMED || it.status == ReportStatus.RESOLVED
+        }
+        val highRisk = reports.count {
+            (it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED) &&
+                it.riskScore >= 60
+        }
         return HomeUiState(
             isLoading = false,
             animalCount = animals.size,
             reportCount = reports.size,
-            activeReportCount = reports.count { it.status != ReportStatus.RESOLVED },
+            activeReportCount = ongoing,
+            ongoingReportCount = ongoing,
+            examinedReportCount = examined,
+            highRiskReportCount = highRisk,
             unreadAlertCount = alerts.count { !it.read },
             vaccinationsDue = dueSoon,
         )

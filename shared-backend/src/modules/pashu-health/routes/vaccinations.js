@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { db } from '../../../db/client.js';
+import { requireRole, verifySession } from '../../../core/middleware/verifySession.js';
 
 const router = Router();
 
@@ -17,7 +18,7 @@ function num(value, fallback = null) {
 }
 
 /** POST /api/v1/pashu-health/vaccinations — create or upsert by id. */
-router.post('/', async (req, res) => {
+router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) => {
   const body = req.body ?? {};
   const id = str(body.id) ?? randomUUID();
   const animalId = str(body.animalId) ?? str(body.animal_id);
@@ -35,7 +36,7 @@ router.post('/', async (req, res) => {
 
   try {
     const animalRow = await db.execute({
-      sql: 'SELECT id FROM pashu_animals WHERE id = ?',
+      sql: 'SELECT id, owner_farmer_id FROM pashu_animals WHERE id = ?',
       args: [animalId],
     });
     if (animalRow.rows.length === 0) {
@@ -43,6 +44,27 @@ router.post('/', async (req, res) => {
         error: 'animal_not_found',
         message: 'Create the animal before recording a vaccination.',
       });
+    }
+    if (req.role !== 'vet' && animalRow.rows[0].owner_farmer_id !== req.userId) {
+      return res.status(403).json({
+        error: 'forbidden_animal',
+        message: 'This animal belongs to another farmer.',
+      });
+    }
+    if (req.role !== 'vet') {
+      const existing = await db.execute({
+        sql: `SELECT a.owner_farmer_id AS owner
+              FROM pashu_vaccinations v
+              JOIN pashu_animals a ON a.id = v.animal_id
+              WHERE v.id = ?`,
+        args: [id],
+      });
+      if (existing.rows.length > 0 && existing.rows[0].owner !== req.userId) {
+        return res.status(403).json({
+          error: 'forbidden_vaccination',
+          message: 'This vaccination belongs to another farmer.',
+        });
+      }
     }
     await db.execute({
       sql: `INSERT INTO pashu_vaccinations (id, animal_id, vaccine_name, date_given, next_due)
@@ -68,12 +90,18 @@ router.post('/', async (req, res) => {
   }
 });
 
-/** GET /api/v1/pashu-health/vaccinations */
-router.get('/', async (_req, res) => {
+/** GET /api/v1/pashu-health/vaccinations — farmers see own animals, vets see all. */
+router.get('/', verifySession, requireRole('farmer', 'vet'), async (req, res) => {
   try {
-    const result = await db.execute(
-      'SELECT * FROM pashu_vaccinations ORDER BY date_given DESC',
-    );
+    const result = req.role === 'vet'
+      ? await db.execute('SELECT * FROM pashu_vaccinations ORDER BY date_given DESC')
+      : await db.execute({
+        sql: `SELECT v.* FROM pashu_vaccinations v
+              JOIN pashu_animals a ON a.id = v.animal_id
+              WHERE a.owner_farmer_id = ?
+              ORDER BY v.date_given DESC`,
+        args: [req.userId],
+      });
     return res.status(200).json({ vaccinations: result.rows });
   } catch (error) {
     console.error('[pashu-health/vaccinations] list failed:', error);
@@ -82,14 +110,20 @@ router.get('/', async (_req, res) => {
 });
 
 /** GET /api/v1/pashu-health/vaccinations/:id */
-router.get('/:id', async (req, res) => {
+router.get('/:id', verifySession, requireRole('farmer', 'vet'), async (req, res) => {
   try {
     const result = await db.execute({
-      sql: 'SELECT * FROM pashu_vaccinations WHERE id = ?',
+      sql: `SELECT v.*, a.owner_farmer_id AS owner_farmer_id
+            FROM pashu_vaccinations v
+            JOIN pashu_animals a ON a.id = v.animal_id
+            WHERE v.id = ?`,
       args: [req.params.id],
     });
     const row = result.rows[0];
-    if (!row) {
+    if (
+      !row ||
+      (req.role !== 'vet' && row.owner_farmer_id !== req.userId)
+    ) {
       return res.status(404).json({ error: 'not_found', message: 'Vaccination not found.' });
     }
     return res.status(200).json({ vaccination: row });
@@ -100,11 +134,13 @@ router.get('/:id', async (req, res) => {
 });
 
 /** DELETE /api/v1/pashu-health/vaccinations/:id */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifySession, requireRole('farmer'), async (req, res) => {
   try {
     const result = await db.execute({
-      sql: 'DELETE FROM pashu_vaccinations WHERE id = ?',
-      args: [req.params.id],
+      sql: `DELETE FROM pashu_vaccinations
+            WHERE id = ?
+              AND animal_id IN (SELECT id FROM pashu_animals WHERE owner_farmer_id = ?)`,
+      args: [req.params.id, req.userId],
     });
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'not_found', message: 'Vaccination not found.' });
