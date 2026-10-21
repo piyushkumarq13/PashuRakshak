@@ -18,6 +18,7 @@ import { env } from '../../config/env.js';
 const HTTP_TIMEOUT_MS = 12_000;
 const BREVO_API = 'https://api.brevo.com/v3';
 const warnings = new Set();
+const logModeWarnings = new Set();
 let transporter = null;
 let brevoSenderCache = null;
 const BREVO_SENDER_CACHE_MS = 5 * 60 * 1000;
@@ -32,6 +33,15 @@ function warnFallback(mode) {
   warnings.add(key);
   console.warn(
     `[mailer] MAIL_MODE=${env.mailMode} is not fully configured — using ${mode} instead.`,
+  );
+}
+
+function warnProductionLog(mode) {
+  if (logModeWarnings.has(mode)) return;
+  logModeWarnings.add(mode);
+  console.warn(
+    `[mailer] MAIL_MODE=log while NODE_ENV=production — using ${mode} instead because it is configured. ` +
+      `Set MAIL_MODE=${mode} explicitly in the environment.`,
   );
 }
 
@@ -54,6 +64,24 @@ export function resolveMailMode() {
       if (env.resendApiKey) return 'resend';
       if (smtpConfigured()) return 'smtp';
       warnFallback('log');
+      return 'log';
+    case 'log':
+      // In production, "log" is almost always an unset/leftover template value.
+      // Use any fully configured provider instead of silently logging OTPs.
+      if (env.isProduction) {
+        if (env.brevoApiKey) {
+          warnProductionLog('brevo');
+          return 'brevo';
+        }
+        if (env.resendApiKey) {
+          warnProductionLog('resend');
+          return 'resend';
+        }
+        if (smtpConfigured()) {
+          warnProductionLog('smtp');
+          return 'smtp';
+        }
+      }
       return 'log';
     default:
       return 'log';

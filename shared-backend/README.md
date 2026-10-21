@@ -144,6 +144,8 @@ Delivery: `MAIL_MODE=log` prints the code to the server console (dev);
 `MAIL_MODE=smtp` sends email via Gmail SMTP (use an App Password);
 `MAIL_MODE=brevo` / `resend` send over HTTPS (required on Render Free);
 `MAIL_MODE=auto` picks Brevo → Resend → SMTP → log, whichever is configured.
+In production, a leftover `MAIL_MODE=log` is automatically upgraded to a
+configured provider (with a warning) so a template value can't silently block OTPs.
 
 ### Auth endpoints (`/api/v1/auth/*`, all require `X-App-Key`)
 
