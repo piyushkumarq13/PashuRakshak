@@ -922,7 +922,7 @@ Pages/components (all under vet-registration/src/components/):
 - CredentialInput.jsx — shared PIN/password input with toggle.
 
 API client: src/api.js — base URL fallback hardcoded
-`https://pashurakshak-ilol.onrender.com`, app key fallback HARDCODED in
+`https://pashurakshak-z8lk.onrender.com`, app key fallback HARDCODED in
 source (api.js:1-2, same pattern in gov-portal/src/api.js:1-2; exact key
 values omitted here). Token in localStorage `vet_registration_token`
 (api.js:4). updateMe() (PUT /core/users/me) exists but is NEVER called —
@@ -1040,7 +1040,7 @@ all missing required vars (config/env.js:14-30).
 
 Android config (root local.properties; template local.properties.example)
 - sdk.dir, B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME,
-  API_BASE_URL (default https://pashurakshak-ilol.onrender.com),
+  API_BASE_URL (default https://pashurakshak-z8lk.onrender.com),
   APP_API_KEY (default hardcoded in core/build.gradle.kts:25).
   Injected as BuildConfig fields (core/build.gradle.kts:38-58).
 - app-farmer/google-services.json present (project pashurakshak-961c1);

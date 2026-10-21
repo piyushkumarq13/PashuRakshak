@@ -28,9 +28,6 @@ router.get('/admin/mail', adminSecret, async (_req, res) => {
     loadedEnvFiles: env.loadedEnvFiles,
     smtpHost: env.smtpHost,
     smtpPort: env.smtpPort,
-    smtpUserLooksLikeBrevo: Boolean(env.smtpUser?.toLowerCase().endsWith('@smtp-brevo.com')),
-    smtpUserLooksLikeGmail: /@(gmail|googlemail)\.com$/i.test(env.smtpUser ?? ''),
-    smtpPassLooksLikeBrevoApiKey: Boolean(env.smtpPass?.startsWith('xkeysib-')),
     // Names only — never values. Makes typos like BREVO_KEY visible.
     mailEnvKeys: Object.keys(process.env)
       .filter((key) => /BREVO|MAIL|SMTP|RESEND|SENDINBLUE/i.test(key))

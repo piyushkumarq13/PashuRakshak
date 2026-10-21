@@ -1,4 +1,4 @@
-const RAW_BASE = import.meta.env.VITE_API_BASE_URL || 'https://pashurakshak-ilol.onrender.com'
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || 'https://pashurakshak-z8lk.onrender.com'
 const BASE = String(RAW_BASE).replace(/\/+$/, '')
 const APP_KEY = import.meta.env.VITE_APP_API_KEY || '46108593bdff58a2952c1ed83649a6e24f8c7b37405aeee9744c035189e25db9'
 

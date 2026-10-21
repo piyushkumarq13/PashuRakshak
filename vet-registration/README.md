@@ -75,7 +75,7 @@ independently.
    Build command: `npm run build` · Output directory: `dist`.
 4. Add environment variables for **Production** and **Preview**:
    - `VITE_API_BASE_URL` = your backend URL (no trailing slash), e.g.
-     `https://pashurakshak-ilol.onrender.com`
+     `https://pashurakshak-z8lk.onrender.com`
    - `VITE_APP_API_KEY` = the key issued when this app was registered
 5. Deploy, then add the Vercel URL to the backend's `CORS_ALLOWED_ORIGINS`
    (or keep `*` while previews change).

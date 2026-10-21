@@ -1444,7 +1444,7 @@ sdk.dir=C\:\\path\\to\\Android\\Sdk
 B2_APPLICATION_KEY_ID=
 B2_APPLICATION_KEY=
 B2_BUCKET_NAME=
-API_BASE_URL=https://pashurakshak-ilol.onrender.com
+API_BASE_URL=https://pashurakshak-z8lk.onrender.com
 APP_API_KEY=
 ```
 

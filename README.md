@@ -1518,7 +1518,7 @@ Create **two separate Vercel projects** from this repo and set the
 1. Import the repo → Root Directory: `gov-portal`
 2. Framework: Vite · Build: `npm run build` · Output: `dist`
 3. Env vars (Production + Preview):
-   - `VITE_API_BASE_URL`: backend URL, e.g. `https://pashurakshak-ilol.onrender.com`
+   - `VITE_API_BASE_URL`: backend URL, e.g. `https://pashurakshak-z8lk.onrender.com`
    - `VITE_APP_API_KEY`: Gov Portal app key
 4. Deploy, then add the URL to the backend's `CORS_ALLOWED_ORIGINS`.
 5. Redeploy after changing any `VITE_*` value (they are baked at build time).

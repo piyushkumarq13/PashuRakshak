@@ -108,28 +108,14 @@ function loadEnv() {
 
   const smtpUser = readEnv('SMTP_USER');
   const smtpPass = readEnv('SMTP_PASS');
-  const isBrevoSmtp = Boolean(smtpUser?.toLowerCase().endsWith('@smtp-brevo.com'));
-  const isGmailSmtp = /@(gmail|googlemail)\.com$/i.test(smtpUser ?? '');
-  // Default the host/port from the login so a partially-filled SMTP config
-  // still works. Brevo uses 2525 because Render Free blocks 465/587; Gmail
-  // uses 465 (supported by Vercel, not by Render Free).
-  const smtpHost =
-    readEnv('SMTP_HOST') ??
-    (isBrevoSmtp ? 'smtp-relay.brevo.com' : isGmailSmtp ? 'smtp.gmail.com' : null);
-  const smtpPort = Number(
-    readEnv('SMTP_PORT') ?? (isBrevoSmtp ? '2525' : isGmailSmtp ? '465' : '587'),
-  );
+  const smtpHost = readEnv('SMTP_HOST');
+  const smtpPort = Number(readEnv('SMTP_PORT') ?? '587');
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
     throw new Error(`Invalid SMTP_PORT "${process.env.SMTP_PORT}" — must be an integer.`);
   }
 
-  // Brevo API keys start with xkeysib-. If one was pasted into SMTP_PASS by
-  // mistake, use it as the API key instead of silently failing.
   const brevoApiKey =
-    readEnv('BREVO_API_KEY') ??
-    readEnv('BREVO_KEY') ??
-    readEnv('SENDINBLUE_API_KEY') ??
-    (smtpPass?.startsWith('xkeysib-') ? smtpPass : null);
+    readEnv('BREVO_API_KEY') ?? readEnv('BREVO_KEY') ?? readEnv('SENDINBLUE_API_KEY');
 
   return {
     nodeEnv,
