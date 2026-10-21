@@ -1,7 +1,24 @@
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import dotenv from 'dotenv';
 
-dotenv.config();
+const loadedEnvFiles = [];
+
+function loadEnvFile(file) {
+  if (!fs.existsSync(file)) return;
+  const result = dotenv.config({ path: file });
+  if (!result.error) loadedEnvFiles.push(file);
+}
+
+// Render's "Add from .env" sets real environment variables. If the file was
+// uploaded as a Secret File instead, it lives in the service root and/or
+// /etc/secrets, so load it explicitly. Existing env vars always win.
+loadEnvFile('.env');
+if (process.env.RENDER === 'true') {
+  loadEnvFile('.env.render');
+  loadEnvFile('/etc/secrets/.env.render');
+  loadEnvFile('/etc/secrets/.env');
+}
 
 const REQUIRED_VARS = [
   'TURSO_DATABASE_URL',
@@ -97,6 +114,7 @@ function loadEnv() {
   return {
     nodeEnv,
     isProduction,
+    loadedEnvFiles,
     tursoDatabaseUrl: readEnv('TURSO_DATABASE_URL'),
     tursoAuthToken: readEnv('TURSO_AUTH_TOKEN'),
     port,

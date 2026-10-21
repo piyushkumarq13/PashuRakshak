@@ -25,6 +25,7 @@ router.get('/admin/mail', adminSecret, async (_req, res) => {
     renderServiceId: process.env.RENDER_SERVICE_ID ?? null,
     renderCommit: process.env.RENDER_GIT_COMMIT ?? null,
     renderExternalUrl: process.env.RENDER_EXTERNAL_URL ?? null,
+    loadedEnvFiles: env.loadedEnvFiles,
     // Names only — never values. Makes typos like BREVO_KEY visible.
     mailEnvKeys: Object.keys(process.env)
       .filter((key) => /BREVO|MAIL|SMTP|RESEND|SENDINBLUE/i.test(key))

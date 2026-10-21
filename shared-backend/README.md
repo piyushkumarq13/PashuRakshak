@@ -59,6 +59,11 @@ bulk import (paste/upload a valid `.env` file). Start from `.env.example`, use
 production values, and fill every `PASTE_...`/`change-me` placeholder. Never
 commit the real `.env`; it is gitignored.
 
+Alternatively, upload the file as a **Secret File** named `.env` or
+`.env.render`. On Render (`RENDER=true`) the server loads `.env.render` from the
+service root and `/etc/secrets/.env.render`; variables already set in the
+dashboard take precedence.
+
 > **Email on Render Free:** Render blocks outbound SMTP ports `25`, `465`, and
 > `587` on Free web services, so Gmail SMTP cannot work there. Either:
 > 1. set `MAIL_MODE=brevo` (or `resend`) + the matching API key over HTTPS
