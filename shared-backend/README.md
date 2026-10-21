@@ -112,12 +112,27 @@ masked verified senders.
 The backend also runs as a Vercel serverless function via `api/index.js` and
 `vercel.json`:
 
-1. Import the repo, set **Root Directory** to `shared-backend`.
+1. Import the repo, set **Root Directory** to `shared-backend`, and use the
+   **Other** framework preset. Build command: `npm run vercel-build`.
 2. Add all environment variables (`TURSO_*`, `ADMIN_SECRET`,
-   `SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, mail settings, etc.).
+   `SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, mail settings, etc.). Vercel does
+   not read `.env` from the repository; the values must be in Project Settings.
 3. Deploy. `npm run vercel-build` runs database migrations during the build.
-4. For Gmail SMTP set `MAIL_MODE=smtp` plus `SMTP_USER` and
-   `SMTP_PASS` (App Password).
+4. Vercel allows SMTP on ports `465` and `587` (port `25` is blocked). For Gmail
+   use:
+   ```env
+   MAIL_MODE=smtp
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=465
+   SMTP_USER=your@gmail.com
+   SMTP_PASS=your-16-character-google-app-password
+   MAIL_FROM="PashuRakshak <your@gmail.com>"
+   ```
+   `SMTP_HOST`/`SMTP_PORT` are inferred from a Gmail `SMTP_USER`, but setting
+   them explicitly is clearer. Brevo's HTTPS API (`MAIL_MODE=brevo` +
+   `BREVO_API_KEY`) is still more reliable than Gmail SMTP.
+5. After deployment, point each frontend's `VITE_API_BASE_URL` at the Vercel
+   backend URL and add the frontend origins to `CORS_ALLOWED_ORIGINS`.
 
 Note: serverless functions are stateless, so the in-memory `/otp` debug page
 should stay disabled (`OTP_PAGE=false`). Use Brevo/SMTP for real delivery.
