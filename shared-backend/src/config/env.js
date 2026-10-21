@@ -106,10 +106,24 @@ function loadEnv() {
     throw new Error(`Invalid MAIL_MODE "${mailMode}" — must be one of: ${MAIL_MODES.join(', ')}.`);
   }
 
-  const smtpPort = Number(readEnv('SMTP_PORT') ?? '587');
+  const smtpUser = readEnv('SMTP_USER');
+  const smtpPass = readEnv('SMTP_PASS');
+  const isBrevoSmtp = Boolean(smtpUser?.toLowerCase().endsWith('@smtp-brevo.com'));
+  // Brevo's SMTP relay supports port 2525, which Render Free does not block.
+  // If the user saved Brevo SMTP credentials, use them even without SMTP_HOST.
+  const smtpHost = readEnv('SMTP_HOST') ?? (isBrevoSmtp ? 'smtp-relay.brevo.com' : null);
+  const smtpPort = Number(readEnv('SMTP_PORT') ?? (isBrevoSmtp ? '2525' : '587'));
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
     throw new Error(`Invalid SMTP_PORT "${process.env.SMTP_PORT}" — must be an integer.`);
   }
+
+  // Brevo API keys start with xkeysib-. If one was pasted into SMTP_PASS by
+  // mistake, use it as the API key instead of silently failing.
+  const brevoApiKey =
+    readEnv('BREVO_API_KEY') ??
+    readEnv('BREVO_KEY') ??
+    readEnv('SENDINBLUE_API_KEY') ??
+    (smtpPass?.startsWith('xkeysib-') ? smtpPass : null);
 
   return {
     nodeEnv,
@@ -123,15 +137,14 @@ function loadEnv() {
     groqApiKey: readEnv('GROQ_API_KEY'),
     sessionSecret,
     mailMode,
-    smtpHost: readEnv('SMTP_HOST'),
+    smtpHost,
     smtpPort,
-    smtpUser: readEnv('SMTP_USER'),
-    smtpPass: readEnv('SMTP_PASS'),
+    smtpUser,
+    smtpPass,
     // HTTPS email providers (needed on Render Free, which blocks SMTP ports).
-    brevoApiKey:
-      readEnv('BREVO_API_KEY') ?? readEnv('BREVO_KEY') ?? readEnv('SENDINBLUE_API_KEY'),
+    brevoApiKey,
     resendApiKey: readEnv('RESEND_API_KEY'),
-    mailFrom: readEnv('MAIL_FROM') ?? readEnv('SMTP_USER'),
+    mailFrom: readEnv('MAIL_FROM') ?? smtpUser,
   };
 }
 
