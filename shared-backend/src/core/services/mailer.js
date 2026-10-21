@@ -270,15 +270,21 @@ export async function listBrevoSenders() {
 export function classifyMailError(message) {
   const text = String(message ?? '').toLowerCase();
   if (
+    text.includes('unrecognised ip') ||
+    text.includes('unauthorized ip') ||
+    text.includes('authorised_ips') ||
+    text.includes('authorized_ips') ||
+    text.includes('ip address')
+  ) {
+    return 'ip_not_allowed';
+  }
+  if (
     text.includes('key not found') ||
     text.includes('unauthorized') ||
     text.includes('http 401') ||
     text.includes('must be a brevo api key')
   ) {
     return 'invalid_api_key';
-  }
-  if (text.includes('unrecognised ip') || text.includes('unauthorized ip') || text.includes('ip address')) {
-    return 'ip_not_allowed';
   }
   if (
     text.includes('sender') &&
