@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
+import { mailErrorHint } from '../services/mailer.js';
 import { hashCredential, validateCredential, verifyCredential } from '../services/credentials.js';
 import {
   createOtp,
@@ -122,7 +123,7 @@ router.post('/otp/send', async (req, res) => {
         error: 'email_delivery_failed',
         message:
           'The verification code was created but the email could not be sent. ' +
-          'Check the server email configuration and try again.',
+          mailErrorHint(delivery.emailErrorCode),
         email: maskEmail(email),
         purpose,
         ...delivery,

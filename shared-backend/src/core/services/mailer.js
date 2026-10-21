@@ -19,6 +19,8 @@ const HTTP_TIMEOUT_MS = 12_000;
 const BREVO_API = 'https://api.brevo.com/v3';
 const warnings = new Set();
 let transporter = null;
+let brevoSenderCache = null;
+const BREVO_SENDER_CACHE_MS = 5 * 60 * 1000;
 
 function smtpConfigured() {
   return Boolean(env.smtpHost && env.smtpUser && env.smtpPass);
@@ -130,10 +132,22 @@ export function logMailerStartup() {
   }
 }
 
+function isBrevoKeyFormat() {
+  return Boolean(env.brevoApiKey?.startsWith('xkeysib-'));
+}
+
 /** Checks the Brevo API key and account status. Returns secrets-free details. */
 export async function checkBrevoAccount() {
   if (!env.brevoApiKey) {
     return { ok: false, error: 'BREVO_API_KEY is not set.' };
+  }
+  if (!isBrevoKeyFormat()) {
+    return {
+      ok: false,
+      error:
+        'BREVO_API_KEY does not start with "xkeysib-". ' +
+        'Use the Brevo API key, not the SMTP key (xsmtpsib-...).',
+    };
   }
 
   const controller = new AbortController();
@@ -172,6 +186,108 @@ export async function checkBrevoAccount() {
   }
 }
 
+async function fetchBrevoSenders() {
+  if (!isBrevoKeyFormat()) return null;
+  if (brevoSenderCache && Date.now() - brevoSenderCache.at < BREVO_SENDER_CACHE_MS) {
+    return brevoSenderCache.senders;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${BREVO_API}/senders`, {
+      headers: { 'api-key': env.brevoApiKey, accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    const list = Array.isArray(data) ? data : Array.isArray(data?.senders) ? data.senders : [];
+    const senders = list
+      .filter((sender) => sender?.email)
+      .map((sender) => ({
+        name: sender.name || 'PashuRakshak',
+        email: cleanEmail(sender.email),
+        active: sender.active !== false,
+      }));
+    brevoSenderCache = { at: Date.now(), senders };
+    return senders;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getVerifiedBrevoSender() {
+  const senders = await fetchBrevoSenders();
+  if (!senders?.length) return null;
+  return senders.find((sender) => sender.active) ?? senders[0];
+}
+
+export async function listBrevoSenders() {
+  if (!env.brevoApiKey) return { ok: false, error: 'BREVO_API_KEY is not set.' };
+  if (!isBrevoKeyFormat()) {
+    return { ok: false, error: 'BREVO_API_KEY is not a Brevo API key (expected xkeysib-...).' };
+  }
+  const senders = await fetchBrevoSenders();
+  if (!senders) {
+    return { ok: false, error: 'Could not read Brevo senders (check the API key permissions).' };
+  }
+  return {
+    ok: true,
+    senders: senders.map((sender) => ({ ...sender, email: maskEmail(sender.email) })),
+  };
+}
+
+export function classifyMailError(message) {
+  const text = String(message ?? '').toLowerCase();
+  if (
+    text.includes('key not found') ||
+    text.includes('unauthorized') ||
+    text.includes('http 401') ||
+    text.includes('must be a brevo api key')
+  ) {
+    return 'invalid_api_key';
+  }
+  if (text.includes('unrecognised ip') || text.includes('unauthorized ip') || text.includes('ip address')) {
+    return 'ip_not_allowed';
+  }
+  if (
+    text.includes('sender') &&
+    (text.includes('not valid') ||
+      text.includes('invalid') ||
+      text.includes('verify') ||
+      text.includes('not verified'))
+  ) {
+    return 'sender_not_verified';
+  }
+  if (text.includes('not activated') || (text.includes('account') && text.includes('activat'))) {
+    return 'account_not_activated';
+  }
+  if (text.includes('timeout') || text.includes('aborted')) return 'provider_timeout';
+  if (text.includes('http 429') || text.includes('rate limit')) return 'rate_limited';
+  return 'provider_error';
+}
+
+export function mailErrorHint(reason) {
+  switch (reason) {
+    case 'invalid_api_key':
+      return 'Brevo rejected the API key. Use the Brevo API key that starts with "xkeysib-", not the SMTP key.';
+    case 'ip_not_allowed':
+      return 'Brevo is blocking the server IP. Disable "Authorized IPs" in Brevo or allow Render outbound IPs.';
+    case 'sender_not_verified':
+      return 'Brevo rejected the sender address. Verify MAIL_FROM under Senders in Brevo.';
+    case 'account_not_activated':
+      return 'Complete Brevo account activation, then retry.';
+    case 'provider_timeout':
+      return 'The email provider timed out. Try again in a moment.';
+    case 'rate_limited':
+      return 'The email provider rate limit was reached. Try again later.';
+    default:
+      return 'Check the server email configuration and Render logs.';
+  }
+}
+
 async function postJson(url, headers, body) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
@@ -197,25 +313,14 @@ async function postJson(url, headers, body) {
   }
 }
 
-async function sendViaBrevo({ to, subject, text, html }) {
-  const from = parseFrom(env.mailFrom, env.smtpUser);
-  if (!from.email) throw new Error('MAIL_FROM (or SMTP_USER) is required for Brevo.');
-
-  const payload = {
-    sender: { name: from.name, email: from.email },
-    to: [{ email: to }],
-    subject,
-    textContent: text,
-    ...(html ? { htmlContent: html } : {}),
-  };
-
+async function postBrevoEmail(from, payload) {
   // Retry once on rate-limit / temporary Brevo failures.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       await postJson(
         `${BREVO_API}/smtp/email`,
         { 'api-key': env.brevoApiKey, accept: 'application/json' },
-        payload,
+        { ...payload, sender: { name: from.name, email: from.email } },
       );
       return;
     } catch (error) {
@@ -223,6 +328,67 @@ async function sendViaBrevo({ to, subject, text, html }) {
       if (attempt === 2 || !retryable) throw error;
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+  }
+}
+
+function isBrevoSenderError(error) {
+  const text = String(error?.message ?? '').toLowerCase();
+  return (
+    text.includes('sender') &&
+    (text.includes('not valid') ||
+      text.includes('invalid') ||
+      text.includes('verify') ||
+      text.includes('not verified'))
+  );
+}
+
+async function sendViaBrevo({ to, subject, text, html }) {
+  if (!env.brevoApiKey) throw new Error('BREVO_API_KEY is not set.');
+  if (!isBrevoKeyFormat()) {
+    throw new Error(
+      'BREVO_API_KEY must be a Brevo API key starting with "xkeysib-" (not an SMTP key).',
+    );
+  }
+
+  let from = parseFrom(env.mailFrom, env.smtpUser);
+  if (!from.email) {
+    from = await getVerifiedBrevoSender();
+    if (from) {
+      console.warn(
+        `[mailer] MAIL_FROM/SMTP_USER is missing — using verified Brevo sender ${maskEmail(from.email)}.`,
+      );
+    }
+  }
+  if (!from?.email) {
+    throw new Error(
+      'MAIL_FROM (or SMTP_USER) is required for Brevo, and no verified sender was found.',
+    );
+  }
+
+  const payload = {
+    to: [{ email: to }],
+    subject,
+    textContent: text,
+    ...(html ? { htmlContent: html } : {}),
+  };
+
+  try {
+    await postBrevoEmail(from, payload);
+    return;
+  } catch (error) {
+    if (!isBrevoSenderError(error)) throw error;
+
+    // The configured sender is not verified. If the Brevo account has a
+    // verified sender, use it automatically so OTP delivery still works.
+    const fallback = await getVerifiedBrevoSender();
+    if (!fallback || fallback.email.toLowerCase() === from.email.toLowerCase()) {
+      throw error;
+    }
+    console.warn(
+      `[mailer] Brevo rejected sender ${maskEmail(from.email)} — retrying with verified ` +
+        `sender ${maskEmail(fallback.email)}. Update MAIL_FROM to ${maskEmail(fallback.email)}.`,
+    );
+    await postBrevoEmail(fallback, payload);
   }
 }
 
@@ -283,7 +449,7 @@ export async function sendMail({ to, subject, text, html }) {
     console.warn(
       `[mailer] EMAIL (fallback log after ${mode} error) → ${maskEmail(to)}\nSubject: ${subject}\n${text}`,
     );
-    return { sent: false, mode, error: error?.message };
+    return { sent: false, mode, error: error?.message, reason: classifyMailError(error?.message) };
   }
 }
 

@@ -54,6 +54,11 @@ curl http://localhost:3000/health
 `shared-backend`). Set the `sync: false` variables in the dashboard, including
 `SESSION_SECRET` (required because Render sets `NODE_ENV=production`).
 
+You can add every variable at once with Render's **Environment → Add from .env**
+bulk import (paste/upload a valid `.env` file). Start from `.env.example`, use
+production values, and fill every `PASTE_...`/`change-me` placeholder. Never
+commit the real `.env`; it is gitignored.
+
 > **Email on Render Free:** Render blocks outbound SMTP ports `25`, `465`, and
 > `587` on Free web services, so Gmail SMTP cannot work there. Either:
 > 1. set `MAIL_MODE=brevo` (or `resend`) + the matching API key over HTTPS
@@ -91,6 +96,11 @@ Common Brevo errors:
 | `401 unrecognised IP address` | Brevo account has **Authorized IPs** enabled; disable it or allow Render's outbound IPs. |
 | `400 sender ... not valid` | `MAIL_FROM` is not a verified Brevo sender, or the address differs from the verified one. |
 | `403 account ... not activated` | Complete Brevo account activation/onboarding. |
+
+If Brevo rejects the configured sender but the account has another verified
+sender, the server retries automatically with that sender and logs a warning
+telling you to update `MAIL_FROM`. The admin diagnostics endpoint lists the
+masked verified senders.
 
 ### Vercel (optional — lets Gmail SMTP work)
 

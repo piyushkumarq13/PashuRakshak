@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { adminSecret } from '../middleware/adminSecret.js';
-import { checkBrevoAccount, getMailerStatus, sendMail } from '../services/mailer.js';
+import {
+  checkBrevoAccount,
+  getMailerStatus,
+  listBrevoSenders,
+  sendMail,
+} from '../services/mailer.js';
 
 const router = Router();
 
@@ -12,7 +17,8 @@ const router = Router();
 router.get('/admin/mail', adminSecret, async (_req, res) => {
   const status = getMailerStatus();
   const brevoAccount = status.brevoConfigured ? await checkBrevoAccount() : null;
-  return res.status(200).json({ ...status, brevoAccount });
+  const brevoSenders = status.brevoConfigured ? await listBrevoSenders() : null;
+  return res.status(200).json({ ...status, brevoAccount, brevoSenders });
 });
 
 /**
@@ -40,6 +46,7 @@ router.post('/admin/mail/test', adminSecret, async (req, res) => {
   return res.status(result.sent ? 200 : 502).json({
     success: result.sent,
     mode: result.mode,
+    ...(result.reason ? { reason: result.reason } : {}),
     ...(result.error ? { error: result.error } : {}),
   });
 });

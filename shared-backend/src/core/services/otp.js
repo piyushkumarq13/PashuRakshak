@@ -123,6 +123,7 @@ export async function createOtp(email, purpose, { phone = null } = {}) {
     cooldownSeconds: RESEND_COOLDOWN_MS / 1000,
     emailSent: delivery.sent,
     emailMode: delivery.mode,
+    ...(delivery.reason ? { emailErrorCode: delivery.reason } : {}),
     ...(delivery.error ? { emailError: delivery.error } : {}),
   };
 }
