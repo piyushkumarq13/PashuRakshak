@@ -115,10 +115,16 @@ export async function createOtp(email, purpose, { phone = null } = {}) {
     </div>`;
 
   const delivery = await sendMail({ to: email, subject, text, html });
-  // Always keep the code on the /otp debug page, even when SMTP fails.
+  // Always keep the code on the /otp debug page, even when email fails.
   recordOtp({ to: email, purpose, code, subject, delivery });
 
-  return { expiresInSeconds: Math.round(OTP_TTL_MS / 1000), cooldownSeconds: RESEND_COOLDOWN_MS / 1000 };
+  return {
+    expiresInSeconds: Math.round(OTP_TTL_MS / 1000),
+    cooldownSeconds: RESEND_COOLDOWN_MS / 1000,
+    emailSent: delivery.sent,
+    emailMode: delivery.mode,
+    ...(delivery.error ? { emailError: delivery.error } : {}),
+  };
 }
 
 /**

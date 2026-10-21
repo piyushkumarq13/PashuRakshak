@@ -16,6 +16,7 @@ import { env } from '../../config/env.js';
  */
 
 const HTTP_TIMEOUT_MS = 12_000;
+const BREVO_API = 'https://api.brevo.com/v3';
 const warnings = new Set();
 let transporter = null;
 
@@ -75,14 +76,100 @@ function getTransporter() {
   return transporter;
 }
 
+function cleanEmail(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
+}
+
 function parseFrom(value, fallbackEmail) {
   const raw = String(value ?? '').trim();
   const match = /^(.*)<([^>]+)>\s*$/.exec(raw);
   if (match) {
-    const name = match[1].trim().replace(/^"|"$/g, '') || 'PashuRakshak';
-    return { name, email: match[2].trim() };
+    const name = match[1].trim().replace(/^"|"$/g, '').trim() || 'PashuRakshak';
+    return { name, email: cleanEmail(match[2]) };
   }
-  return { name: 'PashuRakshak', email: raw || String(fallbackEmail ?? '').trim() };
+  return { name: 'PashuRakshak', email: cleanEmail(raw || fallbackEmail) };
+}
+
+export function getMailerStatus() {
+  const from = parseFrom(env.mailFrom, env.smtpUser);
+  return {
+    configuredMode: env.mailMode,
+    resolvedMode: resolveMailMode(),
+    from: from.email ? maskEmail(from.email) : null,
+    smtpConfigured: smtpConfigured(),
+    brevoConfigured: Boolean(env.brevoApiKey),
+    brevoKeyLooksValid: Boolean(env.brevoApiKey?.startsWith('xkeysib-')),
+    resendConfigured: Boolean(env.resendApiKey),
+  };
+}
+
+/** Logs a safe, secret-free summary once per boot so Render logs show the mail setup. */
+export function logMailerStartup() {
+  const status = getMailerStatus();
+  console.log(
+    `[mailer] configured=${status.configuredMode} resolved=${status.resolvedMode} ` +
+      `from=${status.from ?? '(missing)'} ` +
+      `brevoKey=${status.brevoConfigured ? (status.brevoKeyLooksValid ? 'set' : 'set-but-suspicious') : 'missing'} ` +
+      `smtp=${status.smtpConfigured ? 'set' : 'missing'} resend=${status.resendConfigured ? 'set' : 'missing'}`,
+  );
+
+  if (status.configuredMode === 'brevo' && !status.brevoConfigured) {
+    console.error('[mailer] MAIL_MODE=brevo but BREVO_API_KEY is missing — emails will not send.');
+  }
+  if (status.brevoConfigured && !status.brevoKeyLooksValid) {
+    console.error(
+      '[mailer] BREVO_API_KEY does not start with "xkeysib-". ' +
+        'A Brevo SMTP key (xsmtpsib-...) will NOT work with the HTTPS API.',
+    );
+  }
+  if (status.resolvedMode === 'brevo' && !status.from) {
+    console.error('[mailer] BREVO is active but MAIL_FROM/SMTP_USER is missing — emails will not send.');
+  }
+}
+
+/** Checks the Brevo API key and account status. Returns secrets-free details. */
+export async function checkBrevoAccount() {
+  if (!env.brevoApiKey) {
+    return { ok: false, error: 'BREVO_API_KEY is not set.' };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${BREVO_API}/account`, {
+      headers: { 'api-key': env.brevoApiKey, accept: 'application/json' },
+      signal: controller.signal,
+    });
+    const text = await response.text().catch(() => '');
+    if (!response.ok) {
+      return { ok: false, status: response.status, error: text.slice(0, 400) || response.statusText };
+    }
+    let account = {};
+    try {
+      account = text ? JSON.parse(text) : {};
+    } catch {
+      account = {};
+    }
+    return {
+      ok: true,
+      status: response.status,
+      email: account.email ? maskEmail(account.email) : null,
+      companyName: account.companyName ?? null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error?.name === 'AbortError'
+          ? 'Brevo account check timed out.'
+          : (error?.message ?? String(error)),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function postJson(url, headers, body) {
@@ -100,6 +187,11 @@ async function postJson(url, headers, body) {
       throw new Error(`HTTP ${response.status}: ${text.slice(0, 400) || response.statusText}`);
     }
     return text;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Request timed out after ${HTTP_TIMEOUT_MS / 1000}s`);
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -108,17 +200,30 @@ async function postJson(url, headers, body) {
 async function sendViaBrevo({ to, subject, text, html }) {
   const from = parseFrom(env.mailFrom, env.smtpUser);
   if (!from.email) throw new Error('MAIL_FROM (or SMTP_USER) is required for Brevo.');
-  await postJson(
-    'https://api.brevo.com/v3/smtp/email',
-    { 'api-key': env.brevoApiKey, accept: 'application/json' },
-    {
-      sender: { name: from.name, email: from.email },
-      to: [{ email: to }],
-      subject,
-      textContent: text,
-      ...(html ? { htmlContent: html } : {}),
-    },
-  );
+
+  const payload = {
+    sender: { name: from.name, email: from.email },
+    to: [{ email: to }],
+    subject,
+    textContent: text,
+    ...(html ? { htmlContent: html } : {}),
+  };
+
+  // Retry once on rate-limit / temporary Brevo failures.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await postJson(
+        `${BREVO_API}/smtp/email`,
+        { 'api-key': env.brevoApiKey, accept: 'application/json' },
+        payload,
+      );
+      return;
+    } catch (error) {
+      const retryable = /^HTTP (429|5\d\d):/.test(error?.message ?? '');
+      if (attempt === 2 || !retryable) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
 }
 
 async function sendViaResend({ to, subject, text, html }) {
@@ -168,15 +273,17 @@ export async function sendMail({ to, subject, text, html }) {
   } catch (error) {
     // Never fail the whole request because email delivery broke — log loudly
     // (the OTP is visible in the log so the flow can still be completed in dev).
-    console.error(`[mailer] send to ${to} via ${mode} failed:`, error?.message ?? error);
+    console.error(`[mailer] send to ${maskEmail(to)} via ${mode} failed:`, error?.message ?? error);
     if (mode === 'smtp' && env.isProduction) {
       console.error(
         '[mailer] Render Free blocks outbound SMTP (ports 25/465/587). ' +
           'Use MAIL_MODE=brevo (or resend), or upgrade the Render instance to a paid plan.',
       );
     }
-    console.warn(`[mailer] EMAIL (fallback log after ${mode} error) → ${to}\nSubject: ${subject}\n${text}`);
-    return { sent: false, mode: 'log', error: error?.message };
+    console.warn(
+      `[mailer] EMAIL (fallback log after ${mode} error) → ${maskEmail(to)}\nSubject: ${subject}\n${text}`,
+    );
+    return { sent: false, mode, error: error?.message };
   }
 }
 

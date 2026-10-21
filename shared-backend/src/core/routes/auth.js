@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
+import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { hashCredential, validateCredential, verifyCredential } from '../services/credentials.js';
 import {
@@ -111,12 +112,32 @@ router.post('/otp/send', async (req, res) => {
 
   try {
     const info = await createOtp(email, purpose, { phone });
+    const { emailError, ...delivery } = info;
+
+    // In production, a failed email must not look like a successful send.
+    // The code is still stored, but the client is told delivery failed.
+    if (env.isProduction && !info.emailSent) {
+      return res.status(502).json({
+        success: false,
+        error: 'email_delivery_failed',
+        message:
+          'The verification code was created but the email could not be sent. ' +
+          'Check the server email configuration and try again.',
+        email: maskEmail(email),
+        purpose,
+        ...delivery,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       email: maskEmail(email),
       purpose,
-      ...info,
-      message: 'A 6-digit code has been sent to your email.',
+      ...delivery,
+      ...(emailError && !env.isProduction ? { emailError } : {}),
+      message: info.emailSent
+        ? 'A 6-digit code has been sent to your email.'
+        : 'A 6-digit code has been generated. Check the server log or /otp page.',
     });
   } catch (error) {
     if (error?.status) return sendOtpError(res, error);
@@ -556,11 +577,14 @@ router.post('/gov/request-otp', async (req, res) => {
     }
 
     const info = await createOtp(email, 'gov_login');
+    const { emailError, ...delivery } = info;
     return res.status(200).json({
       success: true,
       email: maskEmail(email),
-      ...info,
-      message: 'A 6-digit code has been sent to your email.',
+      ...delivery,
+      message: info.emailSent
+        ? 'A 6-digit code has been sent to your email.'
+        : 'If this email is registered, a 6-digit code has been sent.',
     });
   } catch (error) {
     if (error?.status) return sendOtpError(res, error);

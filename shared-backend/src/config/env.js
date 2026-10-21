@@ -12,12 +12,24 @@ const REQUIRED_VARS = [
 
 const MAIL_MODES = ['log', 'smtp', 'brevo', 'resend', 'auto'];
 
+function stripOuterQuotes(value) {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 function readEnv(name) {
   const value = process.env[name];
   if (value === undefined || value === null || String(value).trim() === '') {
     return null;
   }
-  return String(value).trim();
+  return stripOuterQuotes(String(value));
 }
 
 function loadEnv() {

@@ -43,7 +43,7 @@ Health check:
 
 ```bash
 curl http://localhost:3000/health
-# {"status":"ok"}
+# {"status":"ok","mail":{"configuredMode":"log","resolvedMode":"log",...}}
 ```
 
 ## Deploy
@@ -62,6 +62,35 @@ curl http://localhost:3000/health
 >
 > With `MAIL_MODE=auto`, the server uses Brevo → Resend → SMTP → console log in
 > that order, so adding a Brevo key is enough to fix OTP delivery.
+
+Check the effective mail setup and send a test email (requires `X-Admin-Secret`):
+
+```bash
+# Effective mode, masked sender, and Brevo key/account check
+curl https://YOUR-SERVICE.onrender.com/api/v1/core/admin/mail \
+  -H "X-Admin-Secret: YOUR_ADMIN_SECRET"
+
+# Send a test email through the configured provider
+curl -X POST https://YOUR-SERVICE.onrender.com/api/v1/core/admin/mail/test \
+  -H "X-Admin-Secret: YOUR_ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"you@example.com"}'
+```
+
+`GET /health` also shows the configured/resolved mail mode and masked sender.
+On startup the logs print a secret-free `[mailer] configured=... resolved=...`
+line. In production, `POST /auth/otp/send` returns `502 email_delivery_failed`
+when the code was stored but the email provider rejected the send, instead of
+falsely reporting success.
+
+Common Brevo errors:
+
+| Error | Cause |
+|---|---|
+| `401 {"message":"Key not found"}` | Used the SMTP key (`xsmtpsib-...`) or a deleted/revoked key. Create an **API key** (`xkeysib-...`). |
+| `401 unrecognised IP address` | Brevo account has **Authorized IPs** enabled; disable it or allow Render's outbound IPs. |
+| `400 sender ... not valid` | `MAIL_FROM` is not a verified Brevo sender, or the address differs from the verified one. |
+| `403 account ... not activated` | Complete Brevo account activation/onboarding. |
 
 ### Vercel (optional — lets Gmail SMTP work)
 
@@ -506,10 +535,10 @@ See `.env.example`:
 |---|---|---|
 | `TURSO_DATABASE_URL` | yes | Turso `libsql://…` URL (or `file:…` for local dev) |
 | `TURSO_AUTH_TOKEN` | yes | Turso auth token |
-| `PORT` | yes | HTTP port |
+| `PORT` | no (default `3000`) | HTTP port. Render sets it automatically; serverless ignores it. |
 | `CORS_ALLOWED_ORIGINS` | yes | Comma-separated allowed origins (backend + both webs: 3000, 5173, 5174) |
 | `ADMIN_SECRET` | yes | Value of the `X-Admin-Secret` header for admin routes |
-| `SESSION_SECRET` | recommended | HMAC secret for session/verify tokens. Falls back to a value derived from `ADMIN_SECRET` when unset |
+| `SESSION_SECRET` | yes in production | HMAC secret for session/verify tokens. Required when `NODE_ENV=production`; dev falls back to a value derived from `ADMIN_SECRET` |
 | `MAIL_MODE` | no (default `log`) | `log`, `smtp`, `brevo`, `resend`, or `auto` |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` | for `MAIL_MODE=smtp` | Gmail SMTP (App Password) |
 | `BREVO_API_KEY` | for `MAIL_MODE=brevo` | Brevo HTTPS API key (works on Render Free) |

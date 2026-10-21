@@ -5,10 +5,15 @@ import cors from 'cors';
 import express from 'express';
 import { env } from './config/env.js';
 import { runMigrations } from './db/migrate.js';
+import { getMailerStatus, logMailerStartup } from './core/services/mailer.js';
 import { clearOtps, listOtps } from './core/services/otpLog.js';
 import routes from './routes.js';
 
 const app = express();
+
+// Log a secret-free mail summary on every boot/cold start so Render logs make
+// misconfiguration obvious (missing key, SMTP key used as API key, etc.).
+logMailerStartup();
 
 app.use(
   cors({
@@ -30,7 +35,18 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) => {
-  res.status(200).json({ status: 'ok' });
+  const mail = getMailerStatus();
+  res.status(200).json({
+    status: 'ok',
+    mail: {
+      configuredMode: mail.configuredMode,
+      resolvedMode: mail.resolvedMode,
+      from: mail.from,
+      brevoConfigured: mail.brevoConfigured,
+      brevoKeyLooksValid: mail.brevoKeyLooksValid,
+      smtpConfigured: mail.smtpConfigured,
+    },
+  });
 });
 
 // ── OTP debug page (temporary while SMTP is being fixed) ──────────────────

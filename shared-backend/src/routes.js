@@ -5,6 +5,7 @@ import authRoutes from './core/routes/auth.js';
 import coreRoutes from './core/routes/apps.js';
 import devicesRoutes from './core/routes/devices.js';
 import govRoutes from './core/routes/gov.js';
+import mailAdminRoutes from './core/routes/mailAdmin.js';
 import pincodeRoutes from './core/routes/pincode.js';
 import usersRoutes from './core/routes/users.js';
 import pashuHealthRoutes from './modules/pashu-health/routes/index.js';
@@ -17,6 +18,7 @@ router.use('/core', devicesRoutes);
 router.use('/core', usersRoutes);
 router.use('/core', pincodeRoutes);
 router.use('/core', adminMagistratesRoutes);
+router.use('/core', mailAdminRoutes);
 
 // Custom auth (email OTP + PIN/password sessions) — no Firebase Auth.
 router.use('/auth', verifyAppKey, authRoutes);
