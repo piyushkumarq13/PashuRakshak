@@ -33,6 +33,7 @@ app.use(
 );
 
 app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false }));
 
 app.get('/health', (_req, res) => {
   const mail = getMailerStatus();
@@ -49,107 +50,142 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ── OTP debug page (temporary while SMTP is being fixed) ──────────────────
-// Disabled by default; enable only for local debugging with OTP_PAGE=true.
-const otpPageEnabled = (process.env.OTP_PAGE ?? 'false').toLowerCase() === 'true';
-const otpPageOpen = !env.isProduction && (process.env.OTP_PAGE_OPEN ?? '').toLowerCase() === 'true';
+// ── OTP debug page ────────────────────────────────────────────────────────
+// Simple PIN-protected page for testing the registration flow without email.
+// Open /otp and enter the PIN. Override the PIN with OTP_PAGE_PIN.
+const OTP_PAGE_PIN = process.env.OTP_PAGE_PIN ?? '841428';
+const OTP_PAGE_COOKIE = 'otp_page_pin';
+const OTP_PAGE_COOKIE_MAX_AGE = 60 * 60 * 1000;
 
-function otpAuthOk(req) {
-  // Open when OTP_PAGE_OPEN=true; otherwise require ?key=<ADMIN_SECRET>
-  // (or X-Admin-Secret header) so strangers can't harvest codes.
-  if (otpPageOpen) return true;
-  const key = req.query.key ?? req.get('x-admin-secret');
-  return typeof key === 'string' && safeEqual(key, env.adminSecret);
+function readCookie(req, name) {
+  const header = req.headers.cookie ?? '';
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) continue;
+    if (part.slice(0, index).trim() !== name) continue;
+    const value = part.slice(index + 1).trim();
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+  return null;
 }
 
-if (otpPageEnabled) {
-  app.get('/otp', (req, res) => {
-    if (!otpAuthOk(req)) {
-      return res
-        .status(401)
-        .type('text/plain')
-        .send('Provide the admin key: /otp?key=<ADMIN_SECRET>');
-    }
+function otpPin(req) {
+  return String(
+    req.body?.pin ??
+      req.query.pin ??
+      req.get('x-otp-pin') ??
+      readCookie(req, OTP_PAGE_COOKIE) ??
+      '',
+  );
+}
 
-    const items = listOtps();
-    const rows = items
-      .map((e) => {
-        const when = new Date(e.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-        const delivery = e.delivery.sent
-          ? `<span class="ok">emailed (${e.delivery.mode})</span>`
-          : `<span class="warn">email not sent (${e.delivery.mode})${e.delivery.error ? ` — ${escapeHtml(e.delivery.error)}` : ''}</span>`;
-        return `<tr>
-          <td class="code">${escapeHtml(e.code)}</td>
-          <td>${escapeHtml(e.to)}</td>
-          <td>${escapeHtml(e.purpose)}</td>
-          <td>${delivery}</td>
-          <td>${when}</td>
-        </tr>`;
-      })
-      .join('');
+function otpAuthOk(req) {
+  return safeEqual(otpPin(req), OTP_PAGE_PIN);
+}
 
-    res.type('html').send(`<!doctype html>
+function renderOtpPage(req, res, { error = '', status = 200 } = {}) {
+  const authenticated = otpAuthOk(req);
+  const items = authenticated ? listOtps() : [];
+  const rows = items
+    .map((e) => {
+      const when = new Date(e.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const delivery = e.delivery.sent
+        ? `emailed (${escapeHtml(e.delivery.mode)})`
+        : `not sent (${escapeHtml(e.delivery.mode)})${e.delivery.error ? ` — ${escapeHtml(e.delivery.error)}` : ''}`;
+      return `<tr>
+        <td class="code">${escapeHtml(e.code)}</td>
+        <td>${escapeHtml(e.to)}</td>
+        <td>${escapeHtml(e.purpose)}</td>
+        <td>${delivery}</td>
+        <td>${when}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const body = authenticated
+    ? `<p class="muted">Auto-refreshes every 3 seconds. <a href="/otp/lock">Lock</a></p>
+       ${
+         items.length === 0
+           ? '<p>No OTPs yet. Trigger a registration or login.</p>'
+           : `<table>
+         <thead><tr><th>Code</th><th>Email</th><th>Purpose</th><th>Delivery</th><th>Time (IST)</th></tr></thead>
+         <tbody>${rows}</tbody>
+       </table>`
+       }
+       <form method="post" action="/otp/clear"><button type="submit">Clear log</button></form>`
+    : `<form method="post" action="/otp">
+         <label>PIN <input type="password" name="pin" inputmode="numeric" maxlength="6" autofocus required /></label>
+         <button type="submit">Open</button>
+       </form>
+       ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}`;
+
+  res.status(status).type('html').send(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="refresh" content="3" />
-  <title>PashuRakshak OTP log</title>
+  ${authenticated ? '<meta http-equiv="refresh" content="3" />' : ''}
+  <title>PashuRakshak OTP</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; background: #0f1220; color: #e8eaf6; }
-    h1 { font-size: 1.25rem; }
-    .banner { background: #3d2b00; border: 1px solid #f0a000; color: #ffd666; padding: .75rem 1rem; border-radius: 8px; margin-bottom: 1rem; }
-    table { border-collapse: collapse; width: 100%; font-size: .95rem; }
-    th, td { border: 1px solid #2a2f4a; padding: .55rem .75rem; text-align: left; }
-    th { background: #1a1f38; }
-    tr:nth-child(even) { background: #141830; }
-    .code { font-family: ui-monospace, monospace; font-size: 1.35rem; letter-spacing: .2em; font-weight: 700; color: #7cffb2; }
-    .ok { color: #7cffb2; }
-    .warn { color: #ffb86b; }
-    .empty { color: #9aa0b8; padding: 1rem 0; }
-    form { margin: .5rem 0 1rem; }
-    button { background: #2a2f4a; color: #e8eaf6; border: 1px solid #4a507a; border-radius: 6px; padding: .4rem .9rem; cursor: pointer; }
-    a { color: #8ab4ff; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #111; }
+    input, button { font: inherit; padding: .5rem .7rem; }
+    input { width: 8rem; letter-spacing: .2em; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #bbb; padding: .5rem; text-align: left; }
+    th { background: #eee; }
+    .code { font-family: monospace; font-size: 1.3rem; font-weight: 700; }
+    .error { color: #b00020; }
+    .muted { color: #666; }
   </style>
 </head>
 <body>
-  <h1>PashuRakshak — OTP log</h1>
-  <div class="banner">
-    Debug page showing codes for testing while email SMTP is broken.
-    Auto-refreshes every 3s. Disable with <code>OTP_PAGE=false</code>.
-    Keep this URL secret.
-  </div>
-  ${
-    items.length === 0
-      ? '<p class="empty">No OTPs yet. Trigger a registration or login to see codes here.</p>'
-      : `<table>
-    <thead><tr><th>Code</th><th>Email</th><th>Purpose</th><th>Delivery</th><th>Time (IST)</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`
-  }
-  <form method="post" action="/otp/clear?key=${encodeURIComponent(req.query.key ?? '')}">
-    <button type="submit">Clear log</button>
-  </form>
-  <p><a href="/otp.json?key=${encodeURIComponent(req.query.key ?? '')}">JSON</a></p>
+  <h1>PashuRakshak OTP log</h1>
+  ${body}
 </body>
 </html>`);
-  });
-
-  app.get('/otp.json', (req, res) => {
-    if (!otpAuthOk(req)) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Provide ?key=<ADMIN_SECRET>.' });
-    }
-    res.status(200).json({ count: listOtps().length, otps: listOtps() });
-  });
-
-  app.post('/otp/clear', (req, res) => {
-    if (!otpAuthOk(req)) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Provide ?key=<ADMIN_SECRET>.' });
-    }
-    clearOtps();
-    res.redirect(303, `/otp?key=${encodeURIComponent(String(req.query.key ?? ''))}`);
-  });
 }
+
+app.get('/otp', (req, res) => {
+  renderOtpPage(req, res);
+});
+
+app.post('/otp', (req, res) => {
+  if (!otpAuthOk(req)) {
+    return renderOtpPage(req, res, { error: 'Wrong PIN.', status: 401 });
+  }
+  res.cookie(OTP_PAGE_COOKIE, OTP_PAGE_PIN, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: env.isProduction,
+    maxAge: OTP_PAGE_COOKIE_MAX_AGE,
+    path: '/',
+  });
+  res.redirect(303, '/otp');
+});
+
+app.get('/otp.json', (req, res) => {
+  if (!otpAuthOk(req)) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Open /otp and enter the PIN.' });
+  }
+  res.status(200).json({ count: listOtps().length, otps: listOtps() });
+});
+
+app.post('/otp/clear', (req, res) => {
+  if (!otpAuthOk(req)) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Open /otp and enter the PIN.' });
+  }
+  clearOtps();
+  res.redirect(303, '/otp');
+});
+
+app.get('/otp/lock', (req, res) => {
+  res.clearCookie(OTP_PAGE_COOKIE, { path: '/' });
+  res.redirect(303, '/otp');
+});
 
 function safeEqual(left, right) {
   const a = Buffer.from(String(left ?? ''));

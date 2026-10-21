@@ -134,8 +134,17 @@ The backend also runs as a Vercel serverless function via `api/index.js` and
 5. After deployment, point each frontend's `VITE_API_BASE_URL` at the Vercel
    backend URL and add the frontend origins to `CORS_ALLOWED_ORIGINS`.
 
-Note: serverless functions are stateless, so the in-memory `/otp` debug page
-should stay disabled (`OTP_PAGE=false`). Use Brevo/SMTP for real delivery.
+Note: serverless functions are stateless, so the in-memory `/otp` log may be
+empty on Vercel when requests land on different instances. Use Render or local
+for the no-email registration test. Use Brevo/SMTP for real delivery.
+
+## OTP debug page
+
+Open `/otp` on the backend and enter PIN `841428` (override with
+`OTP_PAGE_PIN`). The page lists every generated OTP with its delivery status so
+the registration/login flow can be tested without email. JSON is available at
+`/otp.json` after unlocking the page. The log is in memory, so it resets on
+restart and is not reliable across Vercel instances.
 
 ## Authentication (custom — no Firebase Auth)
 
