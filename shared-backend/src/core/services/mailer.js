@@ -480,9 +480,16 @@ export async function sendMail({ to, subject, text, html }) {
           'Use MAIL_MODE=brevo (or resend), or upgrade the Render instance to a paid plan.',
       );
     }
-    console.warn(
-      `[mailer] EMAIL (fallback log after ${mode} error) → ${maskEmail(to)}\nSubject: ${subject}\n${text}`,
-    );
+    if (env.isProduction) {
+      console.warn(
+        `[mailer] EMAIL delivery failed after ${mode} error → ${maskEmail(to)} ` +
+          `(subject: ${subject}); message body not logged in production`,
+      );
+    } else {
+      console.warn(
+        `[mailer] EMAIL (fallback log after ${mode} error) → ${maskEmail(to)}\nSubject: ${subject}\n${text}`,
+      );
+    }
     return { sent: false, mode, error: error?.message, reason: classifyMailError(error?.message) };
   }
 }

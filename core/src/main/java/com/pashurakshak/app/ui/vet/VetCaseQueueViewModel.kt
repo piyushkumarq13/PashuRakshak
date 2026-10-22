@@ -32,7 +32,7 @@ class VetCaseQueueViewModel(
     private val filter: QueueFilter = QueueFilter.ONGOING,
 ) : ViewModel() {
 
-    enum class QueueFilter { ONGOING, EXAMINED, HIGH_RISK }
+    enum class QueueFilter { ONGOING, EXAMINED, HIGH_RISK, RESOLVED }
 
     private val _uiState = MutableStateFlow(VetCaseQueueUiState())
     val uiState: StateFlow<VetCaseQueueUiState> = _uiState.asStateFlow()
@@ -77,21 +77,29 @@ class VetCaseQueueViewModel(
         val animalsById = animalRepository.getAll().associateBy { it.id }
         return reportRepository.getAll()
             .filter { report ->
+                val resolved = report.status == ReportStatus.RESOLVED
                 val ongoing = report.status == ReportStatus.REPORTED ||
                     report.status == ReportStatus.VET_ASSIGNED
-                val examined = report.status == ReportStatus.EXAMINED ||
-                    report.status == ReportStatus.SAMPLE_SENT ||
-                    report.status == ReportStatus.CONFIRMED ||
-                    report.status == ReportStatus.RESOLVED
+                val examined = !resolved && (
+                    report.status == ReportStatus.EXAMINED ||
+                        report.status == ReportStatus.SAMPLE_SENT ||
+                        report.status == ReportStatus.CONFIRMED
+                    )
                 when (filter) {
                     QueueFilter.ONGOING -> ongoing
                     QueueFilter.EXAMINED -> examined
                     QueueFilter.HIGH_RISK -> ongoing && riskLevelFor(report.riskScore) == RiskLevel.HIGH
+                    QueueFilter.RESOLVED -> resolved
                 }
             }
             .sortedWith(
-                compareByDescending<SymptomReport> { it.riskScore }
-                    .thenByDescending { it.createdAt },
+                if (filter == QueueFilter.RESOLVED) {
+                    compareByDescending<SymptomReport> { it.resolvedAt ?: it.createdAt }
+                        .thenByDescending { it.createdAt }
+                } else {
+                    compareByDescending<SymptomReport> { it.riskScore }
+                        .thenByDescending { it.createdAt }
+                },
             )
             .map { report ->
                 QueueItem(

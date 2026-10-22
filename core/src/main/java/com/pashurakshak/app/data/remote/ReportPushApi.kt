@@ -91,6 +91,9 @@ class ReportPushApi(
             put("created_at", report.createdAt)
             put("qr_code_id", report.qrCodeId)
             put("disease_description", report.diseaseDescription ?: JSONObject.NULL)
+            put("resolved_at", report.resolvedAt ?: JSONObject.NULL)
+            put("resolved_by", report.resolvedBy ?: JSONObject.NULL)
+            put("resolution_note", report.resolutionNote ?: JSONObject.NULL)
         }
 
     private fun open(rawUrl: String, method: String): HttpURLConnection {

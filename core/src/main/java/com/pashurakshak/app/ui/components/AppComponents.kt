@@ -219,6 +219,7 @@ fun StatusPill(
     container: Color,
     content: Color,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
 ) {
     Surface(
         color = container,
@@ -226,13 +227,25 @@ fun StatusPill(
         shape = RoundedCornerShape(50),
         modifier = modifier,
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
+        Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        }
     }
 }
 

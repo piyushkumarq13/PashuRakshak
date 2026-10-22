@@ -42,7 +42,16 @@ data class SymptomReport(
     val qrVerified: Boolean = false,
     val verifiedAt: Long? = null,
     val verifiedBy: String? = null,
+    val resolvedAt: Long? = null,
+    val resolvedBy: String? = null,
+    val resolutionNote: String? = null,
 ) {
+    val isResolved: Boolean
+        get() = status == ReportStatus.RESOLVED
+
+    val isVerified: Boolean
+        get() = qrVerified || verifiedAt != null
+
     /**
      * `photo_local_path` / `photo_remote_url` store up to MAX_PHOTOS entries
      * joined by NEWLINE_SEPARATOR (same columns on device and server, so no

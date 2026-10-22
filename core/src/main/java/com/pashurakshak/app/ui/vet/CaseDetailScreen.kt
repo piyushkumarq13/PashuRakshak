@@ -24,9 +24,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -67,6 +69,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.zxing.integration.android.IntentIntegrator
+import com.pashurakshak.app.data.local.ReportStatus
 import com.pashurakshak.app.di.ServiceLocator
 import com.pashurakshak.app.ui.components.AppSpacing
 import com.pashurakshak.app.ui.components.FadeInContent
@@ -78,6 +81,7 @@ import com.pashurakshak.app.ui.components.SectionCard
 import com.pashurakshak.app.ui.components.StatusPill
 import com.pashurakshak.app.ui.theme.AppColors
 import com.pashurakshak.app.ui.farmer.formatDateMillis
+import com.pashurakshak.app.ui.farmer.formatDateTimeMillis
 import com.pashurakshak.app.ui.farmer.prettifyStatus
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -100,6 +104,8 @@ fun CaseDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showFieldCheck by remember { mutableStateOf(false) }
     var showVisitDialog by remember { mutableStateOf(false) }
+    var showResolveDialog by remember { mutableStateOf(false) }
+    var autoScanLaunched by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -112,8 +118,15 @@ fun CaseDetailScreen(
         }
     }
 
-    LaunchedEffect(scanQrAuto) {
-        if (scanQrAuto) {
+    LaunchedEffect(state.report?.status, state.isSubmittingResolution) {
+        if (showResolveDialog && state.isReadOnly && !state.isSubmittingResolution) {
+            showResolveDialog = false
+        }
+    }
+
+    LaunchedEffect(scanQrAuto, state.isLoading, state.isReadOnly) {
+        if (scanQrAuto && !state.isLoading && !state.isReadOnly && !autoScanLaunched) {
+            autoScanLaunched = true
             val activity = context as android.app.Activity
             val intent = Intent(activity, com.journeyapps.barcodescanner.CaptureActivity::class.java)
             intent.putExtra("MODE", IntentIntegrator.QR_CODE)
@@ -133,7 +146,7 @@ fun CaseDetailScreen(
     LaunchedEffect(state.error) {
         state.error?.let { error ->
             snackbarHostState.showSnackbar(error)
-            viewModel.clearNotice()
+            viewModel.clearError()
         }
     }
 
@@ -195,6 +208,9 @@ fun CaseDetailScreen(
             else -> {
                 val riskLevel = riskLevelFor(report.riskScore)
                 val levelColor = riskLevel.color()
+                val resolved = report.status == ReportStatus.RESOLVED
+                val statusContainer = if (resolved || report.qrVerified) AppColors.SoftGreen else AppColors.SoftAmber
+                val statusContent = if (resolved || report.qrVerified) AppColors.Healthy else AppColors.Warning
 
                 Column(
                     modifier = Modifier
@@ -238,12 +254,23 @@ fun CaseDetailScreen(
                                     }
                                     StatusPill(
                                         text = prettifyStatus(report.status.dbValue),
-                                        container = AppColors.SoftGreen,
-                                        content = AppColors.Healthy,
+                                        container = statusContainer,
+                                        content = statusContent,
+                                        icon = when {
+                                            resolved -> Icons.Default.CheckCircle
+                                            report.qrVerified -> Icons.Default.Verified
+                                            else -> null
+                                        },
                                     )
                                 }
                             }
                         }
+
+                    if (resolved) {
+                        FadeInContent(delayMillis = 30) {
+                            ResolutionCard(report = report)
+                        }
+                    }
 
                     FadeInContent(delayMillis = 40) {
                         DetailSection(title = "Animal") {
@@ -329,6 +356,7 @@ fun CaseDetailScreen(
                         )
                     }
 
+                    if (!state.isReadOnly) {
                     if (state.canMarkExamined) {
                         FadeInContent(delayMillis = 140) {
                             PrimaryButton(
@@ -351,6 +379,7 @@ fun CaseDetailScreen(
                             text = "QR verified: ${state.scannedQrCodeId?.take(8)}...",
                             container = AppColors.SoftGreen,
                             content = AppColors.Healthy,
+                            icon = Icons.Default.Verified,
                         )
                     }
 
@@ -434,7 +463,7 @@ fun CaseDetailScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                    } else {
+                    } else if (!state.canResolve) {
                         Text(
                             text = "Field check completed — status: ${prettifyStatus(report.status.dbValue)}",
                             style = MaterialTheme.typography.bodyMedium,
@@ -449,6 +478,16 @@ fun CaseDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                             loading = state.isSubmittingVisit,
                         )
+                    }
+
+                    if (state.canResolve) {
+                        PrimaryButton(
+                            text = "Mark Case Resolved",
+                            onClick = { showResolveDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            loading = state.isSubmittingResolution,
+                        )
+                    }
                     }
                 }
             }
@@ -499,6 +538,120 @@ confirmButton = {
             }
         },
         )
+    }
+
+    if (showResolveDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!state.isSubmittingResolution) showResolveDialog = false },
+            title = { Text("Resolve case") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Close this case and move it to Resolved Cases. " +
+                            "The farmer will see it as resolved.",
+                    )
+                    OutlinedTextField(
+                        value = state.resolutionNote,
+                        onValueChange = viewModel::onResolutionNoteChanged,
+                        label = { Text("Resolution note (optional)") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::resolveCase,
+                    enabled = !state.isSubmittingResolution,
+                ) {
+                    if (state.isSubmittingResolution) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text("Mark resolved")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResolveDialog = false },
+                    enabled = !state.isSubmittingResolution,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ResolutionCard(report: com.pashurakshak.app.data.local.SymptomReport) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = AppColors.SoftGreen,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpacing.Card),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = AppColors.Healthy,
+                    modifier = Modifier.size(28.dp),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Case resolved",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.Healthy,
+                    )
+                    Text(
+                        text = if (report.qrVerified) {
+                            "Visit verified with the farmer's report QR"
+                        } else {
+                            "Closed by a veterinarian"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (report.qrVerified) {
+                    StatusPill(
+                        text = "VERIFIED",
+                        container = AppColors.Healthy.copy(alpha = 0.16f),
+                        content = AppColors.Healthy,
+                        icon = Icons.Default.Verified,
+                    )
+                }
+            }
+            val resolvedAt = report.resolvedAt ?: report.verifiedAt
+            if (resolvedAt != null) {
+                Text(
+                    text = "Resolved ${formatDateTimeMillis(resolvedAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (!report.resolutionNote.isNullOrBlank()) {
+                Text(
+                    text = "Resolution note: ${report.resolutionNote}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
     }
 }
 

@@ -35,6 +35,7 @@ data class CaseDetailUiState(
     val animal: Animal? = null,
     val isSubmittingFieldCheck: Boolean = false,
     val isSubmittingVisit: Boolean = false,
+    val isSubmittingResolution: Boolean = false,
     val notice: String? = null,
     val error: String? = null,
     val isQrScanned: Boolean = false,
@@ -44,17 +45,30 @@ data class CaseDetailUiState(
     val assessmentText: String = "",
     val latitudeText: String = "",
     val longitudeText: String = "",
+    val resolutionNote: String = "",
 ) {
+    val isReadOnly: Boolean
+        get() = report?.status == ReportStatus.RESOLVED
     val canMarkExamined: Boolean
         get() = report != null &&
             (report.status == ReportStatus.REPORTED || report.status == ReportStatus.VET_ASSIGNED) &&
-            !isSubmittingFieldCheck
+            !isSubmittingFieldCheck &&
+            !isReadOnly
     val canSubmitVisit: Boolean
-        get() = qrVerified &&
+        get() = !isReadOnly &&
+            qrVerified &&
             assessment != null &&
             assessmentText.isNotBlank() &&
             latitudeText.toDoubleOrNull() != null &&
             longitudeText.toDoubleOrNull() != null &&
+            !isSubmittingVisit
+    val canResolve: Boolean
+        get() = report != null &&
+            (report.status == ReportStatus.EXAMINED ||
+                report.status == ReportStatus.SAMPLE_SENT ||
+                report.status == ReportStatus.CONFIRMED) &&
+            !isSubmittingResolution &&
+            !isSubmittingFieldCheck &&
             !isSubmittingVisit
 }
 
@@ -111,6 +125,7 @@ class CaseDetailViewModel(
 
     fun submitFieldCheck(sampleRequired: Boolean) {
         val report = _uiState.value.report ?: return
+        if (report.status == ReportStatus.RESOLVED) return
         val assessmentText = _uiState.value.assessmentText
         val newStatus = if (sampleRequired) ReportStatus.SAMPLE_SENT else ReportStatus.EXAMINED
         // Marking a case examined without a successful QR scan is allowed for the
@@ -168,6 +183,60 @@ class CaseDetailViewModel(
                     it.copy(
                         isSubmittingFieldCheck = false,
                         error = error.message ?: "Failed to update status",
+                    )
+                }
+            }
+        }
+    }
+
+    fun onResolutionNoteChanged(text: String) {
+        _uiState.update { it.copy(resolutionNote = text) }
+    }
+
+    fun resolveCase() {
+        val state = _uiState.value
+        val report = state.report ?: return
+        if (!state.canResolve) return
+        val vetId = SessionManager.uid ?: return
+        val note = state.resolutionNote.ifBlank { state.assessmentText.trim() }.takeIf { it.isNotBlank() }
+        val resolvedAt = System.currentTimeMillis()
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmittingResolution = true, error = null) }
+            runCatching {
+                val resolved = report.copy(
+                    status = ReportStatus.RESOLVED,
+                    resolvedAt = resolvedAt,
+                    resolvedBy = vetId,
+                    resolutionNote = note,
+                    synced = false,
+                )
+                reportRepository.update(resolved)
+                SyncScheduler.triggerNow(ServiceLocator.context)
+                val animalLabel = state.animal?.let { "${it.name} (${it.species})" }
+                    ?: "Animal ${report.animalId.take(8)}"
+                alertRepository.insert(
+                    Alert(
+                        recipientRole = "farmer",
+                        recipientId = report.farmerId,
+                        message = "Case resolved for $animalLabel." +
+                            (note?.let { " Note: $it" } ?: ""),
+                    ),
+                )
+                resolved
+            }.onSuccess { resolved ->
+                _uiState.update {
+                    it.copy(
+                        isSubmittingResolution = false,
+                        report = resolved,
+                        notice = "Case marked as resolved",
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isSubmittingResolution = false,
+                        error = error.message ?: "Could not resolve the case",
                     )
                 }
             }
@@ -234,6 +303,8 @@ class CaseDetailViewModel(
         val assessment = state.assessment ?: return
         val latitude = state.latitudeText.toDouble()
         val longitude = state.longitudeText.toDouble()
+        val resolvedAt = System.currentTimeMillis()
+        val resolutionNote = assessmentText.trim().takeIf { it.isNotBlank() }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmittingVisit = true, error = null) }
@@ -245,6 +316,7 @@ class CaseDetailViewModel(
                     put("latitude", latitude)
                     put("longitude", longitude)
                     put("assessment", assessment)
+                    put("resolutionNote", resolutionNote ?: JSONObject.NULL)
                 }
                 val sessionToken = SessionManager.sessionToken ?: throw IOException("Not signed in")
                 val connection = URL("${BuildConfig.API_BASE_URL}/api/v1/pashu-health/visits")
@@ -281,13 +353,16 @@ class CaseDetailViewModel(
                     // Update report status with vet_assessment and assigned_vet_id
                     reportRepository.update(
                         report.copy(
-                            status = ReportStatus.EXAMINED,
+                            status = ReportStatus.RESOLVED,
                             vetAssessment = assessmentText,
                             assignedVetId = vetId,
                             synced = false,
                             qrVerified = true,
-                            verifiedAt = System.currentTimeMillis(),
+                            verifiedAt = resolvedAt,
                             verifiedBy = vetId,
+                            resolvedAt = resolvedAt,
+                            resolvedBy = vetId,
+                            resolutionNote = resolutionNote,
                         )
                     )
                     SyncScheduler.triggerNow(ServiceLocator.context)
@@ -307,20 +382,24 @@ class CaseDetailViewModel(
                         Alert(
                             recipientRole = "farmer",
                             recipientId = report.farmerId,
-                            message = "Visit verified for $animalLabel. Assessment: $assessmentText.",
+                            message = "Visit verified and case resolved for $animalLabel. " +
+                                "Assessment: $assessmentText.",
                         ),
                     )
                     _uiState.update {
                         it.copy(
                             isSubmittingVisit = false,
-                            notice = "Visit verified successfully",
+                            notice = "Visit verified — case resolved",
                             report = report.copy(
-                                status = ReportStatus.EXAMINED,
+                                status = ReportStatus.RESOLVED,
                                 vetAssessment = assessmentText,
                                 assignedVetId = vetId,
                                 qrVerified = true,
-                                verifiedAt = System.currentTimeMillis(),
+                                verifiedAt = resolvedAt,
                                 verifiedBy = vetId,
+                                resolvedAt = resolvedAt,
+                                resolvedBy = vetId,
+                                resolutionNote = resolutionNote,
                             ),
                         )
                     }
@@ -340,5 +419,9 @@ class CaseDetailViewModel(
 
     fun clearNotice() {
         _uiState.update { it.copy(notice = null) }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
     }
 }

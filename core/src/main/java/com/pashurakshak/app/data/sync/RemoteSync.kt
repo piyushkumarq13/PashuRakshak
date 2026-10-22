@@ -257,6 +257,10 @@ object RemoteSync {
                         verifiedAt = row.optLong("verifiedAt", 0L).takeIf { it > 0L }
                             ?: row.optLong("verified_at", 0L).takeIf { it > 0L },
                         verifiedBy = row.optString("verified_by").takeIf { it.isNotBlank() },
+                        resolvedAt = row.optLong("resolvedAt", 0L).takeIf { it > 0L }
+                            ?: row.optLong("resolved_at", 0L).takeIf { it > 0L },
+                        resolvedBy = row.optString("resolved_by").takeIf { it.isNotBlank() },
+                        resolutionNote = row.optString("resolution_note").takeIf { it.isNotBlank() },
                     ),
                 )
             }.onFailure { Log.w(TAG, "report pull row failed: ${it.message}") }

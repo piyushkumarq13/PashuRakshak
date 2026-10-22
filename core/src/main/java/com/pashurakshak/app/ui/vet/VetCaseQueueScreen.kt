@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +91,7 @@ fun VetCaseQueueScreen(
                     VetCaseQueueViewModel.QueueFilter.ONGOING -> "Case Queue"
                     VetCaseQueueViewModel.QueueFilter.EXAMINED -> "Examined Cases"
                     VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "High-Risk Cases"
+                    VetCaseQueueViewModel.QueueFilter.RESOLVED -> "Resolved Cases"
                 },
                 subtitle = if (state.items.isNotEmpty()) {
                     "${state.items.size} case${if (state.items.size == 1) "" else "s"}"
@@ -98,6 +100,7 @@ fun VetCaseQueueScreen(
                         VetCaseQueueViewModel.QueueFilter.ONGOING -> "Farmer reports awaiting triage"
                         VetCaseQueueViewModel.QueueFilter.EXAMINED -> "Cases you have examined"
                         VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "Ongoing high-risk reports"
+                        VetCaseQueueViewModel.QueueFilter.RESOLVED -> "Verified and closed cases"
                     }
                 },
             )
@@ -120,11 +123,13 @@ fun VetCaseQueueScreen(
                             VetCaseQueueViewModel.QueueFilter.ONGOING -> "All clear"
                             VetCaseQueueViewModel.QueueFilter.EXAMINED -> "No examined cases"
                             VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "No high-risk cases"
+                            VetCaseQueueViewModel.QueueFilter.RESOLVED -> "No resolved cases"
                         },
                         message = when (filter) {
                             VetCaseQueueViewModel.QueueFilter.ONGOING -> "No pending cases right now. New farmer reports will appear here."
                             VetCaseQueueViewModel.QueueFilter.EXAMINED -> "Examined and sample-sent cases will appear here."
                             VetCaseQueueViewModel.QueueFilter.HIGH_RISK -> "High-risk ongoing cases will appear here."
+                            VetCaseQueueViewModel.QueueFilter.RESOLVED -> "Verified and closed cases will appear here."
                         },
                     )
                 }
@@ -149,7 +154,8 @@ fun VetCaseQueueScreen(
                                     onClick = { onReportClick(item.report.id) },
                                     onQrScanClick = { onQrScanClick(item.report.id) },
                                     onMarkExamined = { viewModel.markAsExamined(item.report.id) },
-                                    showActions = filter != VetCaseQueueViewModel.QueueFilter.EXAMINED,
+                                    showActions = filter == VetCaseQueueViewModel.QueueFilter.ONGOING ||
+                                        filter == VetCaseQueueViewModel.QueueFilter.HIGH_RISK,
                                 )
                             }
                         }
@@ -169,6 +175,9 @@ private fun QueueCard(
     showActions: Boolean = true,
 ) {
     val levelColor = item.riskLevel.color()
+    val resolved = item.report.status == com.pashurakshak.app.data.local.ReportStatus.RESOLVED
+    val statusContainer = if (resolved) AppColors.SoftGreen else AppColors.SoftAmber
+    val statusContent = if (resolved) AppColors.Healthy else AppColors.Warning
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -215,10 +224,27 @@ private fun QueueCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     StatusPill(
-                        text = prettifyStatus(item.report.status.dbValue),
-                        container = AppColors.SoftAmber,
-                        content = AppColors.Warning,
+                        text = if (resolved && item.report.qrVerified) {
+                            "RESOLVED • VERIFIED"
+                        } else {
+                            prettifyStatus(item.report.status.dbValue)
+                        },
+                        container = statusContainer,
+                        content = statusContent,
+                        icon = when {
+                            resolved -> Icons.Default.CheckCircle
+                            item.report.qrVerified -> Icons.Default.Verified
+                            else -> null
+                        },
                     )
+                    if (item.report.qrVerified && !resolved) {
+                        StatusPill(
+                            text = "VERIFIED",
+                            container = AppColors.SoftGreen,
+                            content = AppColors.Healthy,
+                            icon = Icons.Default.Verified,
+                        )
+                    }
                     Text(
                         text = "Risk score ${item.report.riskScore}",
                         style = MaterialTheme.typography.bodySmall,
@@ -253,6 +279,24 @@ private fun QueueCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+
+                if (resolved) {
+                    Text(
+                        text = item.report.resolvedAt?.let {
+                            "Resolved ${formatDateMillis(it)}"
+                        } ?: "Resolved",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = AppColors.Healthy,
+                    )
+                    if (!item.report.resolutionNote.isNullOrBlank()) {
+                        Text(
+                            text = "Note: ${item.report.resolutionNote}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 if (showActions) {

@@ -21,8 +21,9 @@ class ReportRepository(private val db: TursoClient) {
             INSERT INTO symptom_reports (
                 id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
                 latitude, longitude, risk_score, risk_breakdown, status, synced, created_at,
-                assigned_vet_id, ai_risk_category, vet_assessment, village, qr_code_id, disease_description, qr_verified, verified_at, verified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                assigned_vet_id, ai_risk_category, vet_assessment, village, qr_code_id, disease_description,
+                qr_verified, verified_at, verified_by, resolved_at, resolved_by, resolution_note
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             report.id,
             report.animalId,
@@ -46,6 +47,9 @@ class ReportRepository(private val db: TursoClient) {
             if (report.qrVerified) 1 else 0,
             report.verifiedAt,
             report.verifiedBy,
+            report.resolvedAt,
+            report.resolvedBy,
+            report.resolutionNote,
         )
     }
 
@@ -96,7 +100,9 @@ class ReportRepository(private val db: TursoClient) {
                 animal_id = ?, farmer_id = ?, symptoms = ?, photo_local_path = ?, photo_remote_url = ?,
                 latitude = ?, longitude = ?, risk_score = ?, risk_breakdown = ?, status = ?,
                 synced = ?, created_at = ?, assigned_vet_id = ?, ai_risk_category = ?,
-                vet_assessment = ?, village = ?, qr_code_id = ?, disease_description = ?, qr_verified = ?, verified_at = ?, verified_by = ?
+                vet_assessment = ?, village = ?, qr_code_id = ?, disease_description = ?,
+                qr_verified = ?, verified_at = ?, verified_by = ?,
+                resolved_at = ?, resolved_by = ?, resolution_note = ?
             WHERE id = ?
             """.trimIndent(),
             report.animalId,
@@ -120,6 +126,9 @@ class ReportRepository(private val db: TursoClient) {
             if (report.qrVerified) 1 else 0,
             report.verifiedAt,
             report.verifiedBy,
+            report.resolvedAt,
+            report.resolvedBy,
+            report.resolutionNote,
             report.id,
         )
     }
@@ -170,12 +179,16 @@ class ReportRepository(private val db: TursoClient) {
             // pending push worker will reconcile both sides on its next cycle.
             update(
                 existing.copy(
+                    status = if (report.isResolved) ReportStatus.RESOLVED else existing.status,
                     photoRemoteUrl = report.photoRemoteUrl ?: existing.photoRemoteUrl,
-                    // The server is the source of truth for QR verification even
-                    // when the local row has its own pending push changes.
+                    // The server is the source of truth for QR verification and
+                    // resolution even when the local row has pending push changes.
                     qrVerified = report.qrVerified,
                     verifiedAt = report.verifiedAt,
                     verifiedBy = report.verifiedBy,
+                    resolvedAt = report.resolvedAt ?: existing.resolvedAt,
+                    resolvedBy = report.resolvedBy ?: existing.resolvedBy,
+                    resolutionNote = report.resolutionNote ?: existing.resolutionNote,
                 ),
             )
         } else {
@@ -191,6 +204,9 @@ class ReportRepository(private val db: TursoClient) {
                     assignedVetId = existing.assignedVetId ?: report.assignedVetId,
                     qrCodeId = existing.qrCodeId.ifBlank { report.qrCodeId },
                     diseaseDescription = existing.diseaseDescription ?: report.diseaseDescription,
+                    resolvedAt = report.resolvedAt ?: existing.resolvedAt,
+                    resolvedBy = report.resolvedBy ?: existing.resolvedBy,
+                    resolutionNote = report.resolutionNote ?: existing.resolutionNote,
                 ),
             )
         }
@@ -220,6 +236,9 @@ class ReportRepository(private val db: TursoClient) {
         qrVerified = int(19) != 0,
         verifiedAt = (this[20] as? Number)?.toLong(),
         verifiedBy = stringOrNull(21),
+        resolvedAt = (this[22] as? Number)?.toLong(),
+        resolvedBy = stringOrNull(23),
+        resolutionNote = stringOrNull(24)?.takeIf { it.isNotBlank() },
     )
 
     private fun symptomsToJson(symptoms: List<String>): String =

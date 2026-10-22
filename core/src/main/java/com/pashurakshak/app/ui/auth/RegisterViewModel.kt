@@ -1,10 +1,12 @@
 package com.pashurakshak.app.ui.auth
 
+import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pashurakshak.app.data.AuthRepository
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +38,10 @@ data class RegisterUiState(
 
     val phoneDigits: String get() = phone.filter { it.isDigit() }.removePrefix("0").takeLast(10)
     val canSendOtp: Boolean
-        get() = phoneDigits.length == 10 && email.contains("@") && resendCooldown == 0 && !isLoading
+        get() = phoneDigits.length == 10 &&
+            Patterns.EMAIL_ADDRESS.matcher(email).matches() &&
+            resendCooldown == 0 &&
+            !isLoading
     val canVerifyOtp: Boolean get() = otpCode.length == 6 && !isLoading
     val canRegister: Boolean
         get() = name.isNotBlank() &&
@@ -88,24 +93,41 @@ class RegisterViewModel : ViewModel() {
         if (!state.canSendOtp) return
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            auth.sendOtp(state.email, PURPOSE, phone = state.phoneDigits).fold(
-                onSuccess = { info ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            step = RegisterUiState.Step.OTP,
-                            maskedEmail = info.maskedEmail,
-                            resendCooldown = info.cooldownSeconds,
-                        )
-                    }
-                    startCooldown(info.cooldownSeconds)
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(isLoading = false, error = error.message ?: "Could not send the code.")
-                    }
-                },
-            )
+            try {
+                auth.sendOtp(state.email, PURPOSE, phone = state.phoneDigits).fold(
+                    onSuccess = { info ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                step = RegisterUiState.Step.OTP,
+                                maskedEmail = info.maskedEmail,
+                                resendCooldown = info.cooldownSeconds,
+                            )
+                        }
+                        startCooldown(info.cooldownSeconds)
+                    },
+                    onFailure = { error ->
+                        val wait = (error as? AuthRepository.OtpException)?.retryAfterSeconds ?: 0
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = error.message ?: "Could not send the code.",
+                                resendCooldown = wait,
+                            )
+                        }
+                        if (wait > 0) startCooldown(wait)
+                    },
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = error.message ?: "Could not send the code. Try again.",
+                    )
+                }
+            }
         }
     }
 
@@ -114,18 +136,29 @@ class RegisterViewModel : ViewModel() {
         if (!state.canVerifyOtp) return
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            auth.verifyOtp(state.email, PURPOSE, state.otpCode).fold(
-                onSuccess = { verifyToken ->
-                    _uiState.update {
-                        it.copy(isLoading = false, step = RegisterUiState.Step.DETAILS, verifyToken = verifyToken)
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(isLoading = false, error = error.message ?: "Invalid code.")
-                    }
-                },
-            )
+            try {
+                auth.verifyOtp(state.email, PURPOSE, state.otpCode).fold(
+                    onSuccess = { verifyToken ->
+                        _uiState.update {
+                            it.copy(isLoading = false, step = RegisterUiState.Step.DETAILS, verifyToken = verifyToken)
+                        }
+                    },
+                    onFailure = { error ->
+                        _uiState.update {
+                            it.copy(isLoading = false, error = error.message ?: "Invalid code.")
+                        }
+                    },
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = error.message ?: "Could not verify the code. Try again.",
+                    )
+                }
+            }
         }
     }
 
@@ -142,29 +175,40 @@ class RegisterViewModel : ViewModel() {
         }
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = auth.registerFarmer(
-                verifyToken = verifyToken,
-                phone = state.phoneDigits,
-                pin = state.pin,
-                name = state.name.trim(),
-                preferredLanguage = state.language,
-                animalCount = state.animalCountText.toIntOrNull(),
-                village = state.village.trim(),
-                pincode = state.pincode,
-            )
-            when (result) {
-                is AuthRepository.AuthResult.Success -> {
-                    auth.establishSession(
-                        token = result.token,
-                        user = result.user,
-                        profile = result.profile,
-                        role = SessionManager.Role.FARMER,
-                    )
-                    _uiState.update { it.copy(isLoading = false, registered = true) }
-                }
+            try {
+                val result = auth.registerFarmer(
+                    verifyToken = verifyToken,
+                    phone = state.phoneDigits,
+                    pin = state.pin,
+                    name = state.name.trim(),
+                    preferredLanguage = state.language,
+                    animalCount = state.animalCountText.toIntOrNull(),
+                    village = state.village.trim(),
+                    pincode = state.pincode,
+                )
+                when (result) {
+                    is AuthRepository.AuthResult.Success -> {
+                        auth.establishSession(
+                            token = result.token,
+                            user = result.user,
+                            profile = result.profile,
+                            role = SessionManager.Role.FARMER,
+                        )
+                        _uiState.update { it.copy(isLoading = false, registered = true) }
+                    }
 
-                is AuthRepository.AuthResult.Failure -> {
-                    _uiState.update { it.copy(isLoading = false, error = result.message) }
+                    is AuthRepository.AuthResult.Failure -> {
+                        _uiState.update { it.copy(isLoading = false, error = result.message) }
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Your account was created, but sign-in failed. Please sign in again.",
+                    )
                 }
             }
         }

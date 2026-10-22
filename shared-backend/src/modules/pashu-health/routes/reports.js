@@ -95,13 +95,16 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
       .json({ error: 'invalid_body', message: 'Fields "latitude" and "longitude" must be numbers.' });
   }
 
-  const status = str(body.status) ?? 'reported';
-  if (!REPORT_STATUSES.includes(status)) {
+  const requestedStatus = str(body.status) ?? 'reported';
+  if (!REPORT_STATUSES.includes(requestedStatus)) {
     return res.status(400).json({
       error: 'invalid_status',
       message: `"status" must be one of: ${REPORT_STATUSES.join(', ')}.`,
     });
   }
+  // A farmer cannot create a case in a vet-controlled state. On updates the
+  // status CASE below also ignores it, but forcing it here keeps inserts safe.
+  const status = isVet ? requestedStatus : 'reported';
 
   const symptoms = jsonish(body.symptoms, '[]');
   const riskBreakdown = jsonish(body.riskBreakdown ?? body.risk_breakdown, '{}');
@@ -121,6 +124,24 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
       : null;
     const qrCodeId = str(body.qrCodeId) ?? str(body.qr_code_id);
     const diseaseDescription = str(body.diseaseDescription) ?? str(body.disease_description);
+    // Resolution metadata is vet-controlled. The closing vet is always the
+    // authenticated session, never a client-supplied id.
+    const requestedResolvedAt = isVet
+      ? num(body.resolvedAt ?? body.resolved_at)
+      : null;
+    const resolutionNote = isVet
+      ? str(body.resolutionNote) ?? str(body.resolution_note)
+      : null;
+    // Resolution metadata is only touched by a vet explicitly sending a
+    // resolved status. This keeps older clients that still push "examined"
+    // from clearing a case that another (newer) vet already resolved.
+    const canSetResolution = isVet && requestedStatus === 'resolved';
+    const resolvedAt = canSetResolution
+      ? requestedResolvedAt && requestedResolvedAt > 0
+        ? requestedResolvedAt
+        : Date.now()
+      : null;
+    const resolvedBy = canSetResolution ? req.userId : null;
     // qr_verified / verified_at / verified_by are never accepted from the body —
     // only routes/visits.js sets them.
 
@@ -190,8 +211,9 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
      await db.execute({
         sql: `INSERT INTO pashu_symptom_reports (
             id, animal_id, farmer_id, symptoms, photo_local_path, photo_remote_url,
-            latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village, assigned_vet_id, vet_assessment, qr_code_id, disease_description
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            latitude, longitude, risk_score, risk_breakdown, status, synced, created_at, village, assigned_vet_id, vet_assessment, qr_code_id, disease_description,
+            resolved_at, resolved_by, resolution_note
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             animal_id = excluded.animal_id,
             farmer_id = excluded.farmer_id,
@@ -204,14 +226,20 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
             longitude = excluded.longitude,
             risk_score = excluded.risk_score,
              risk_breakdown = excluded.risk_breakdown,
-           status = CASE WHEN ? THEN excluded.status ELSE pashu_symptom_reports.status END,
+           status = CASE
+             WHEN pashu_symptom_reports.status = 'resolved' THEN pashu_symptom_reports.status
+             WHEN ? THEN excluded.status
+             ELSE pashu_symptom_reports.status END,
              synced = excluded.synced,
            created_at = excluded.created_at,
            village = COALESCE(excluded.village, pashu_symptom_reports.village),
             assigned_vet_id = CASE WHEN ? THEN excluded.assigned_vet_id ELSE pashu_symptom_reports.assigned_vet_id END,
             vet_assessment = CASE WHEN ? THEN excluded.vet_assessment ELSE pashu_symptom_reports.vet_assessment END,
             qr_code_id = COALESCE(excluded.qr_code_id, pashu_symptom_reports.qr_code_id),
-            disease_description = COALESCE(excluded.disease_description, pashu_symptom_reports.disease_description)`,
+            disease_description = COALESCE(excluded.disease_description, pashu_symptom_reports.disease_description),
+            resolved_at = CASE WHEN ? THEN excluded.resolved_at ELSE pashu_symptom_reports.resolved_at END,
+            resolved_by = CASE WHEN ? THEN excluded.resolved_by ELSE pashu_symptom_reports.resolved_by END,
+            resolution_note = CASE WHEN ? THEN excluded.resolution_note ELSE pashu_symptom_reports.resolution_note END`,
        args: [
          id,
          animalId,
@@ -231,10 +259,18 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
           vetAssessment,
           qrCodeId,
           diseaseDescription,
-          // vet flags for the three UPDATE CASEs (status, assigned_vet_id, vet_assessment)
+          resolvedAt,
+          resolvedBy,
+          resolutionNote,
+          // vet flags for the UPDATE CASEs (status, assigned_vet_id,
+          // vet_assessment); resolution stays untouched unless a vet sends
+          // status=resolved explicitly.
           isVet ? 1 : 0,
           isVet ? 1 : 0,
           isVet ? 1 : 0,
+          canSetResolution ? 1 : 0,
+          canSetResolution ? 1 : 0,
+          canSetResolution ? 1 : 0,
         ],
      });
 

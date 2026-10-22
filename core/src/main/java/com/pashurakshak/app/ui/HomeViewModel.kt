@@ -20,6 +20,7 @@ data class HomeUiState(
     val activeReportCount: Int = 0,
     val ongoingReportCount: Int = 0,
     val examinedReportCount: Int = 0,
+    val resolvedReportCount: Int = 0,
     val highRiskReportCount: Int = 0,
     val unreadAlertCount: Int = 0,
     val vaccinationsDue: Int = 0,
@@ -81,8 +82,9 @@ class HomeViewModel(
         }
         val examined = reports.count {
             it.status == ReportStatus.EXAMINED || it.status == ReportStatus.SAMPLE_SENT ||
-                it.status == ReportStatus.CONFIRMED || it.status == ReportStatus.RESOLVED
+                it.status == ReportStatus.CONFIRMED
         }
+        val resolved = reports.count { it.status == ReportStatus.RESOLVED }
         val highRisk = reports.count {
             (it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED) &&
                 it.riskScore >= 60
@@ -94,6 +96,7 @@ class HomeViewModel(
             activeReportCount = ongoing,
             ongoingReportCount = ongoing,
             examinedReportCount = examined,
+            resolvedReportCount = resolved,
             highRiskReportCount = highRisk,
             unreadAlertCount = alerts.count { !it.read },
             vaccinationsDue = dueSoon,

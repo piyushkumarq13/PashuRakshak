@@ -171,12 +171,12 @@ fun FarmerHomeScreen(
                             onClick = { onOpenMyReports("ongoing") },
                         )
                         StatCard(
-                            label = "Examined",
-                            value = state.examinedReportCount.toString(),
+                            label = "Resolved",
+                            value = state.resolvedReportCount.toString(),
                             icon = Icons.Default.CheckCircle,
                             accent = AppColors.Healthy,
                             modifier = Modifier.weight(1f),
-                            onClick = { onOpenMyReports("examined") },
+                            onClick = { onOpenMyReports("resolved") },
                         )
                     }
                 }
@@ -309,6 +309,11 @@ fun FarmerHomeScreen(
                                 OverviewLine(
                                     label = "Examined cases",
                                     value = state.examinedReportCount.toString(),
+                                    icon = Icons.Default.MedicalServices,
+                                )
+                                OverviewLine(
+                                    label = "Resolved cases",
+                                    value = state.resolvedReportCount.toString(),
                                     icon = Icons.Default.CheckCircle,
                                 )
                                 OverviewLine(
@@ -657,36 +662,54 @@ fun VetHomeScreen(
 
             item {
                 FadeInContent(delayMillis = 40) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = AppSpacing.Screen),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.MD),
                     ) {
-                        StatCard(
-                            label = "In queue",
-                            value = state.pendingCount.toString(),
-                            icon = Icons.Default.ContentPaste,
-                            accent = AppColors.Primary,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onOpenCaseQueue("ongoing") },
-                        )
-                        StatCard(
-                            label = "High risk",
-                            value = state.highRiskCount.toString(),
-                            icon = Icons.Default.Warning,
-                            accent = AppColors.Danger,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onOpenCaseQueue("high_risk") },
-                        )
-                        StatCard(
-                            label = "Examined",
-                            value = state.examinedCount.toString(),
-                            icon = Icons.Default.CheckCircle,
-                            accent = AppColors.Info,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onOpenCaseQueue("examined") },
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
+                        ) {
+                            StatCard(
+                                label = "In queue",
+                                value = state.pendingCount.toString(),
+                                icon = Icons.Default.ContentPaste,
+                                accent = AppColors.Primary,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onOpenCaseQueue("ongoing") },
+                            )
+                            StatCard(
+                                label = "High risk",
+                                value = state.highRiskCount.toString(),
+                                icon = Icons.Default.Warning,
+                                accent = AppColors.Danger,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onOpenCaseQueue("high_risk") },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.MD),
+                        ) {
+                            StatCard(
+                                label = "Examined",
+                                value = state.examinedCount.toString(),
+                                icon = Icons.Default.MedicalServices,
+                                accent = AppColors.Info,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onOpenCaseQueue("examined") },
+                            )
+                            StatCard(
+                                label = "Resolved",
+                                value = state.resolvedCount.toString(),
+                                icon = Icons.Default.CheckCircle,
+                                accent = AppColors.Healthy,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onOpenCaseQueue("resolved") },
+                            )
+                        }
                     }
                 }
             }
@@ -705,6 +728,13 @@ fun VetHomeScreen(
                                     subtitle = "Triage incoming farmer reports",
                                     tint = AppColors.Primary,
                                     onClick = { onOpenCaseQueue("ongoing") },
+                                )
+                                QuickActionRow(
+                                    icon = Icons.Default.CheckCircle,
+                                    title = "Resolved cases",
+                                    subtitle = "Verified and closed cases",
+                                    tint = AppColors.Healthy,
+                                    onClick = { onOpenCaseQueue("resolved") },
                                 )
                                 QuickActionRow(
                                     icon = Icons.Default.Notifications,
@@ -751,6 +781,11 @@ fun VetHomeScreen(
                                     value = state.highRiskCount.toString(),
                                     icon = Icons.Default.Warning,
                                     highlight = state.highRiskCount > 0,
+                                )
+                                OverviewLine(
+                                    label = "Resolved cases",
+                                    value = state.resolvedCount.toString(),
+                                    icon = Icons.Default.CheckCircle,
                                 )
                                 OverviewLine(
                                     label = "Unread alerts",

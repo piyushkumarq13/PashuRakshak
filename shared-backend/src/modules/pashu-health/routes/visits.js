@@ -32,7 +32,8 @@ function num(value, fallback = null) {
  * - Reject 403 if the session's user id doesn't match assigned_vet_id —
  *   unless assigned_vet_id is null (fallback path).
  * - Insert visit_verifications row.
- * - UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined'.
+ * - UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'resolved'
+ *   plus verified/resolved metadata.
  * - If assessment === 'risky': insert a pashu_gov_alerts row
  *   (severity='high', message with animal/village context).
  */
@@ -43,6 +44,7 @@ router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, re
   const latitude = num(body.latitude);
   const longitude = num(body.longitude);
   const assessment = str(body.assessment);
+  const resolutionNote = str(body.resolutionNote) ?? str(body.resolution_note);
 
   if (!reportId || !assessment) {
     return res.status(400).json({
@@ -144,11 +146,17 @@ router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, re
       return res.status(409).json({ error: "qr_mismatch", message: "Scanned QR does not match this animal" });
     }
 
-    // On a match only: set vet_assessment, status 'examined', AND the
-    // qr_verified/verified_at/verified_by triple so clients can trust it.
+    // On a match only: set vet_assessment and close the case. A successful
+    // verified visit is a completed case, so it moves out of the active queue
+    // into the vet's resolved list. The resolution metadata keeps the audit
+    // trail separate from the clinical assessment.
     await db.execute({
-      sql: `UPDATE pashu_symptom_reports SET vet_assessment = ?, status = 'examined', qr_verified = 1, verified_at = ?, verified_by = ? WHERE id = ?`,
-      args: [assessment, now, vetUserId, reportId],
+      sql: `UPDATE pashu_symptom_reports
+        SET vet_assessment = ?, status = 'resolved', qr_verified = 1,
+            verified_at = ?, verified_by = ?, resolved_at = ?,
+            resolved_by = ?, resolution_note = ?
+        WHERE id = ?`,
+      args: [assessment, now, vetUserId, now, vetUserId, resolutionNote, reportId],
     });
 
     await appendAuditLog(db, {
@@ -182,6 +190,7 @@ router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, re
         assessment,
         confidence,
         flagged,
+        status: 'resolved',
       },
     };
     await idempotencyStore(db, req, responseBody);

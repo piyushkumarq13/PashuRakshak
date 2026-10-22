@@ -118,12 +118,20 @@ router.post('/otp/send', async (req, res) => {
     // In production, a failed email must not look like a successful send.
     // The code is still stored, but the client is told delivery failed.
     if (env.isProduction && !info.emailSent) {
+      if (info.cooldownSeconds > 0) {
+        res.set('Retry-After', String(Math.ceil(info.cooldownSeconds)));
+      }
+      console.error(
+        '[auth/otp/send] email delivery failed:',
+        delivery.emailErrorCode ?? 'unknown',
+        mailErrorHint(delivery.emailErrorCode),
+      );
       return res.status(502).json({
         success: false,
         error: 'email_delivery_failed',
         message:
-          'The verification code was created but the email could not be sent. ' +
-          mailErrorHint(delivery.emailErrorCode),
+          'We could not send the verification email right now. ' +
+          'Check the address and try again in a minute.',
         email: maskEmail(email),
         purpose,
         ...delivery,

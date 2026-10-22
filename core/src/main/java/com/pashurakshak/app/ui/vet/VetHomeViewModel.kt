@@ -16,6 +16,7 @@ data class VetHomeUiState(
     val pendingCount: Int = 0,
     val highRiskCount: Int = 0,
     val examinedCount: Int = 0,
+    val resolvedCount: Int = 0,
     val unreadAlertCount: Int = 0,
     val error: String? = null,
 )
@@ -60,8 +61,11 @@ class VetHomeViewModel(
             it.status == ReportStatus.REPORTED || it.status == ReportStatus.VET_ASSIGNED
         }
         val examined = reports.count {
-            it.status != ReportStatus.REPORTED && it.status != ReportStatus.VET_ASSIGNED
+            it.status == ReportStatus.EXAMINED ||
+                it.status == ReportStatus.SAMPLE_SENT ||
+                it.status == ReportStatus.CONFIRMED
         }
+        val resolved = reports.count { it.status == ReportStatus.RESOLVED }
         val alerts = alertRepository.getAll()
             .filter { it.recipientRole == "vet" && !it.read }
         return VetHomeUiState(
@@ -69,6 +73,7 @@ class VetHomeViewModel(
             pendingCount = pending.size,
             highRiskCount = pending.count { riskLevelFor(it.riskScore) == RiskLevel.HIGH },
             examinedCount = examined,
+            resolvedCount = resolved,
             unreadAlertCount = alerts.size,
         )
     }

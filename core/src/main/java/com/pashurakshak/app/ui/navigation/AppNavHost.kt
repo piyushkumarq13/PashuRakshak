@@ -249,6 +249,7 @@ fun AppNavHost(
                 val filter = when (filterName) {
                     "examined" -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.EXAMINED
                     "high_risk" -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.HIGH_RISK
+                    "resolved" -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.RESOLVED
                     else -> com.pashurakshak.app.ui.vet.VetCaseQueueViewModel.QueueFilter.ONGOING
                 }
                 VetCaseQueueScreen(

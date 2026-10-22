@@ -6,6 +6,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.pashurakshak.app.BuildConfig
 import com.pashurakshak.app.data.local.TursoClient
 import com.pashurakshak.app.di.ServiceLocator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -135,7 +136,7 @@ class AuthRepository(private val db: TursoClient) {
         Result.success(
             OtpSendInfo(
                 maskedEmail = json.optString("email"),
-                cooldownSeconds = json.optInt("retryAfterSeconds", 60),
+                cooldownSeconds = json.otpCooldownSeconds() ?: 60,
             ),
         )
     }
@@ -333,6 +334,8 @@ class AuthRepository(private val db: TursoClient) {
     private suspend fun authIo(block: suspend () -> AuthResult): AuthResult =
         try {
             io(block)
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             AuthResult.Failure(networkMessage(error), "network")
         }
@@ -340,6 +343,8 @@ class AuthRepository(private val db: TursoClient) {
     private suspend fun <T> resultIo(block: suspend () -> Result<T>): Result<T> =
         try {
             io(block)
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(if (error is OtpException) error else OtpException(networkMessage(error), "network", null))
         }
@@ -360,7 +365,7 @@ class AuthRepository(private val db: TursoClient) {
             fun from(status: Int, json: JSONObject): OtpException = OtpException(
                 message = json.optString("message", "Could not send/verify the code."),
                 code = json.optString("error").takeIf { it.isNotBlank() },
-                retryAfterSeconds = json.optInt("retryAfterSeconds").takeIf { it > 0 },
+                retryAfterSeconds = json.otpCooldownSeconds(),
             )
         }
     }
@@ -369,3 +374,8 @@ class AuthRepository(private val db: TursoClient) {
         const val TAG = "AuthRepository"
     }
 }
+
+private fun JSONObject.otpCooldownSeconds(): Int? =
+    (optInt("retryAfterSeconds").takeIf { it > 0 }
+        ?: optInt("cooldownSeconds").takeIf { it > 0 })
+        ?.coerceAtMost(60 * 60)

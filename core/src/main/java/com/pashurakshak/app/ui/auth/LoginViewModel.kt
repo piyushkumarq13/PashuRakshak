@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.pashurakshak.app.data.AuthRepository
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,26 +48,37 @@ class LoginViewModel : ViewModel() {
         _uiState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val result = when (SessionManager.appRole) {
-                SessionManager.Role.FARMER -> auth.loginFarmer(state.phoneDigits, state.credential.trim())
-                SessionManager.Role.VET -> auth.loginVet(state.phoneDigits, state.credential.trim())
-            }
-            when (result) {
-                is AuthRepository.AuthResult.Success -> {
-                    val role = SessionManager.appRole
-                    auth.establishSession(
-                        token = result.token,
-                        user = result.user,
-                        profile = result.profile,
-                        role = role,
-                    )
-                    _uiState.update { it.copy(isLoading = false, loggedIn = true) }
+            try {
+                val result = when (SessionManager.appRole) {
+                    SessionManager.Role.FARMER -> auth.loginFarmer(state.phoneDigits, state.credential.trim())
+                    SessionManager.Role.VET -> auth.loginVet(state.phoneDigits, state.credential.trim())
                 }
-
-                is AuthRepository.AuthResult.Failure -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, error = result.message)
+                when (result) {
+                    is AuthRepository.AuthResult.Success -> {
+                        val role = SessionManager.appRole
+                        auth.establishSession(
+                            token = result.token,
+                            user = result.user,
+                            profile = result.profile,
+                            role = role,
+                        )
+                        _uiState.update { it.copy(isLoading = false, loggedIn = true) }
                     }
+
+                    is AuthRepository.AuthResult.Failure -> {
+                        _uiState.update {
+                            it.copy(isLoading = false, error = result.message)
+                        }
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Signed in, but the session could not be saved. Try again.",
+                    )
                 }
             }
         }

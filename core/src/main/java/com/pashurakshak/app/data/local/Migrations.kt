@@ -13,6 +13,7 @@ object Migrations {
         Migration(version = 3, sql = ADD_VET_ASSESSMENT_COLUMNS),
         Migration(version = 4, sql = ADD_QR_AND_DISEASE_COLUMNS),
         Migration(version = 5, sql = ADD_QR_VERIFIED_COLUMNS),
+        Migration(version = 6, sql = ADD_RESOLUTION_COLUMNS),
     )
 
     private const val ADD_VET_ASSESSMENT_COLUMNS = """
@@ -31,6 +32,12 @@ object Migrations {
         ALTER TABLE symptom_reports ADD COLUMN qr_verified INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE symptom_reports ADD COLUMN verified_at INTEGER;
         ALTER TABLE symptom_reports ADD COLUMN verified_by TEXT;
+    """
+
+    private const val ADD_RESOLUTION_COLUMNS = """
+        ALTER TABLE symptom_reports ADD COLUMN resolved_at INTEGER;
+        ALTER TABLE symptom_reports ADD COLUMN resolved_by TEXT;
+        ALTER TABLE symptom_reports ADD COLUMN resolution_note TEXT;
     """
 
     private const val FARMERS_TABLE = """

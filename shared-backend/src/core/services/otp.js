@@ -118,9 +118,11 @@ export async function createOtp(email, purpose, { phone = null } = {}) {
   // Always keep the code on the /otp debug page, even when email fails.
   recordOtp({ to: email, purpose, code, subject, delivery });
 
+  const cooldownSeconds = RESEND_COOLDOWN_MS / 1000;
   return {
     expiresInSeconds: Math.round(OTP_TTL_MS / 1000),
-    cooldownSeconds: RESEND_COOLDOWN_MS / 1000,
+    cooldownSeconds,
+    retryAfterSeconds: cooldownSeconds,
     emailSent: delivery.sent,
     emailMode: delivery.mode,
     ...(delivery.reason ? { emailErrorCode: delivery.reason } : {}),
@@ -180,6 +182,9 @@ export async function verifyOtp(email, purpose, code) {
 /** Maps a thrown OTP error to an Express response. Returns res for chaining. */
 export function sendOtpError(res, error) {
   const status = error?.status ?? 500;
+  if (Number(error?.retryAfterSeconds) > 0) {
+    res.set('Retry-After', String(Math.ceil(Number(error.retryAfterSeconds))));
+  }
   return res.status(status).json({
     error: error?.error ?? 'otp_failed',
     message: error?.message ?? 'Could not process the code.',

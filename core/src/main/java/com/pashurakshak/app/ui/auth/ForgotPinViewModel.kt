@@ -1,10 +1,12 @@
 package com.pashurakshak.app.ui.auth
 
+import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pashurakshak.app.data.AuthRepository
 import com.pashurakshak.app.data.SessionManager
 import com.pashurakshak.app.di.ServiceLocator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +31,7 @@ data class ForgotPinUiState(
     enum class Step { EMAIL, RESET }
 
     val canSendOtp: Boolean
-        get() = email.contains("@") && resendCooldown == 0 && !isLoading
+        get() = Patterns.EMAIL_ADDRESS.matcher(email).matches() && resendCooldown == 0 && !isLoading
     val canReset: Boolean
         get() = otpCode.length == 6 && newPin.length == 6 && newPin == newPinConfirm && !isLoading
 }
@@ -63,24 +65,41 @@ class ForgotPinViewModel : ViewModel() {
         if (!state.canSendOtp) return
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            auth.sendOtp(state.email, purpose).fold(
-                onSuccess = { info ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            step = ForgotPinUiState.Step.RESET,
-                            maskedEmail = info.maskedEmail,
-                            resendCooldown = info.cooldownSeconds,
-                        )
-                    }
-                    startCooldown(info.cooldownSeconds)
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(isLoading = false, error = error.message ?: "Could not send the code.")
-                    }
-                },
-            )
+            try {
+                auth.sendOtp(state.email, purpose).fold(
+                    onSuccess = { info ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                step = ForgotPinUiState.Step.RESET,
+                                maskedEmail = info.maskedEmail,
+                                resendCooldown = info.cooldownSeconds,
+                            )
+                        }
+                        startCooldown(info.cooldownSeconds)
+                    },
+                    onFailure = { error ->
+                        val wait = (error as? AuthRepository.OtpException)?.retryAfterSeconds ?: 0
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = error.message ?: "Could not send the code.",
+                                resendCooldown = wait,
+                            )
+                        }
+                        if (wait > 0) startCooldown(wait)
+                    },
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = error.message ?: "Could not send the code. Try again.",
+                    )
+                }
+            }
         }
     }
 
@@ -98,40 +117,62 @@ class ForgotPinViewModel : ViewModel() {
         }
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            auth.verifyOtp(state.email, purpose, state.otpCode).fold(
-                onSuccess = { token ->
-                    _uiState.update { it.copy(verifyToken = token) }
-                    submitReset(token)
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(isLoading = false, error = error.message ?: "Invalid code.")
-                    }
-                },
-            )
+            try {
+                auth.verifyOtp(state.email, purpose, state.otpCode).fold(
+                    onSuccess = { token ->
+                        _uiState.update { it.copy(verifyToken = token) }
+                        submitReset(token)
+                    },
+                    onFailure = { error ->
+                        _uiState.update {
+                            it.copy(isLoading = false, error = error.message ?: "Invalid code.")
+                        }
+                    },
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = error.message ?: "Could not verify the code. Try again.",
+                    )
+                }
+            }
         }
     }
 
     private fun submitReset(verifyToken: String) {
         val state = _uiState.value
         viewModelScope.launch {
-            val result = when (SessionManager.appRole) {
-                SessionManager.Role.FARMER -> auth.resetFarmerPin(verifyToken, state.newPin)
-                SessionManager.Role.VET -> auth.resetVetPin(verifyToken, state.newPin)
-            }
-            when (result) {
-                is AuthRepository.AuthResult.Success -> {
-                    auth.establishSession(
-                        token = result.token,
-                        user = result.user,
-                        profile = result.profile,
-                        role = SessionManager.appRole,
-                    )
-                    _uiState.update { it.copy(isLoading = false, completed = true) }
+            try {
+                val result = when (SessionManager.appRole) {
+                    SessionManager.Role.FARMER -> auth.resetFarmerPin(verifyToken, state.newPin)
+                    SessionManager.Role.VET -> auth.resetVetPin(verifyToken, state.newPin)
                 }
+                when (result) {
+                    is AuthRepository.AuthResult.Success -> {
+                        auth.establishSession(
+                            token = result.token,
+                            user = result.user,
+                            profile = result.profile,
+                            role = SessionManager.appRole,
+                        )
+                        _uiState.update { it.copy(isLoading = false, completed = true) }
+                    }
 
-                is AuthRepository.AuthResult.Failure -> {
-                    _uiState.update { it.copy(isLoading = false, error = result.message) }
+                    is AuthRepository.AuthResult.Failure -> {
+                        _uiState.update { it.copy(isLoading = false, error = result.message) }
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "PIN changed, but sign-in failed. Please sign in again.",
+                    )
                 }
             }
         }
