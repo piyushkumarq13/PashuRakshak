@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -182,9 +183,9 @@ fun AiInsightScreen(
     }
 }
 
-private val ChatListBottomPadding = 88.dp
+internal val ChatListBottomPadding = 88.dp
 
-private suspend fun LazyListState.scrollToLatest(bottomPaddingPx: Float) {
+internal suspend fun LazyListState.scrollToLatest(bottomPaddingPx: Float) {
     val total = layoutInfo.totalItemsCount
     if (total == 0) return
     animateScrollToItem(total - 1)
@@ -194,7 +195,7 @@ private suspend fun LazyListState.scrollToLatest(bottomPaddingPx: Float) {
     if (excess > 0) animateScrollBy(excess)
 }
 
-private fun LazyListState.snapToLatest(bottomPaddingPx: Float) {
+internal fun LazyListState.snapToLatest(bottomPaddingPx: Float) {
     val info = layoutInfo
     val last = info.visibleItemsInfo.lastOrNull { it.index == info.totalItemsCount - 1 } ?: return
     val excess = last.offset + last.size - (info.viewportEndOffset - bottomPaddingPx)
@@ -203,7 +204,10 @@ private fun LazyListState.snapToLatest(bottomPaddingPx: Float) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatTopBar(onBack: () -> Unit) {
+internal fun ChatTopBar(
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 2.dp,
@@ -248,6 +252,7 @@ private fun ChatTopBar(onBack: () -> Unit) {
                     )
                 }
             },
+            actions = actions,
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
@@ -256,7 +261,7 @@ private fun ChatTopBar(onBack: () -> Unit) {
 }
 
 @Composable
-private fun AiMessageBubble(text: String, isTyping: Boolean = false) {
+internal fun AiMessageBubble(text: String, isTyping: Boolean = false) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
@@ -280,7 +285,7 @@ private fun AiMessageBubble(text: String, isTyping: Boolean = false) {
 }
 
 @Composable
-private fun UserMessageBubble(text: String) {
+internal fun UserMessageBubble(text: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
@@ -302,7 +307,7 @@ private fun UserMessageBubble(text: String) {
 }
 
 @Composable
-private fun TypingIndicatorBubble() {
+internal fun TypingIndicatorBubble() {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
@@ -347,7 +352,7 @@ private fun TypingDot(delayMillis: Int) {
 }
 
 @Composable
-private fun ChatInputBar(
+internal fun ChatInputBar(
     inputText: String,
     onInputChanged: (String) -> Unit,
     onSend: () -> Unit,
@@ -432,7 +437,7 @@ private fun ChatInputBar(
 }
 
 @Composable
-private fun CenterProgress() {
+internal fun CenterProgress() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -451,7 +456,7 @@ private fun CenterProgress() {
 }
 
 @Composable
-private fun EmptyChatState() {
+internal fun EmptyChatState() {
     Column(
         modifier = Modifier
             .fillMaxWidth()

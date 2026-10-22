@@ -8,7 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,10 +45,10 @@ fun FarmerBottomBar(navController: NavHostController) {
                 label = "Home",
             )
             BottomBarTab(
-                selected = currentRoute == Screen.MyAnimals.route,
-                onClick = { navController.navigateToFarmerTab(Screen.MyAnimals.route) },
-                icon = Icons.Default.Pets,
-                label = "Animals",
+                selected = currentRoute == Screen.AiChat.route,
+                onClick = { navController.navigateToFarmerTab(Screen.AiChat.route) },
+                icon = Icons.Default.SmartToy,
+                label = "Chat",
             )
             BottomBarTab(
                 selected = currentRoute == Screen.ReportSickAnimal.route,

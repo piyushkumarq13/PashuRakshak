@@ -2,6 +2,7 @@ import { Router } from 'express';
 import alerts from './alerts.js';
 import animals from './animals.js';
 import aiChat from './aiChat.js';
+import aiChatSessions from './aiChatSessions.js';
 import clusters from './clusters.js';
 import farmerProfiles from './farmerProfiles.js';
 import govAlerts from './govAlerts.js';
@@ -24,6 +25,7 @@ router.use('/vet-profiles', vetProfiles);
 router.use('/vet-applications', vetApplications);
 router.use('/vets', vetsAvailable);
 router.use('/reports', aiChat);
+router.use('/ai-chats', aiChatSessions);
 router.use('/visits', visits);
 router.use('/gov-alerts', govAlerts);
 

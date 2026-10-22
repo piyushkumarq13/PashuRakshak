@@ -27,6 +27,7 @@ import com.pashurakshak.app.notifications.AppNotifications
 import com.pashurakshak.app.ui.FarmerHomeScreen
 import com.pashurakshak.app.ui.OnboardingScreen
 import com.pashurakshak.app.ui.VetHomeScreen
+import com.pashurakshak.app.ui.aiInsight.AiChatScreen
 import com.pashurakshak.app.ui.aiInsight.AiInsightScreen
 import com.pashurakshak.app.ui.auth.ForgotPinScreen
 import com.pashurakshak.app.ui.auth.LoginScreen
@@ -56,6 +57,7 @@ private val NoBarRoutes = setOf(
     Screen.QrPassport.route,
     Screen.CaseDetail.route,
     Screen.AiInsight.route,
+    Screen.AiChat.route,
     Screen.B2UploadTest.route,
 )
 
@@ -198,6 +200,11 @@ fun AppNavHost(
                     onAnimalClick = { animalId ->
                         navController.navigate(Screen.QrPassport.withAnimalId(animalId))
                     },
+                )
+            }
+            composable(Screen.AiChat.route) {
+                AiChatScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.ReportSickAnimal.route) {

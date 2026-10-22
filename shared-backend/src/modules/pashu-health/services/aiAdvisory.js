@@ -98,6 +98,30 @@ export async function generateAdvisory(report, farmerPreferredLanguage) {
  */
 const UNAVAILABLE_REPLY = 'AI assistance is unavailable right now. Please try again shortly.';
 
+export async function generateStandaloneChatReply(history, farmerPreferredLanguage) {
+  const language = farmerPreferredLanguage === 'hi' ? 'Hindi' : 'English';
+  const cappedContext = (Array.isArray(history) ? history : []).slice(-20);
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: `${SYSTEM_PROMPT}\n\nRespond in ${language}.` },
+        ...cappedContext,
+      ],
+      temperature: 0.7,
+      max_tokens: MAX_COMPLETION_TOKENS,
+      reasoning_effort: REASONING_EFFORT,
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? '';
+    return reply.trim() ? reply : UNAVAILABLE_REPLY;
+  } catch (error) {
+    console.error('[aiAdvisory] standalone Groq call failed:', error?.message ?? error);
+    return UNAVAILABLE_REPLY;
+  }
+}
+
 export async function continueConversation(reportId, farmerId, userMessage, farmerPreferredLanguage) {
   const language = farmerPreferredLanguage === 'hi' ? 'Hindi' : 'English';
   const now = Date.now();
