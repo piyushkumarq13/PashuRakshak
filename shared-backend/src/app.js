@@ -1,3 +1,5 @@
+import 'express-async-errors';
+
 import { timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +33,34 @@ app.use(
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   }),
 );
+
+const configuredRequestTimeout = Number(process.env.REQUEST_TIMEOUT_MS ?? '45000');
+const REQUEST_TIMEOUT_MS =
+  Number.isFinite(configuredRequestTimeout) && configuredRequestTimeout > 0
+    ? configuredRequestTimeout
+    : 45_000;
+
+// Every request gets a hard deadline. A slow provider, database call, or
+// third-party API can no longer hold a connection open indefinitely.
+app.use((req, res, next) => {
+  const timer = setTimeout(() => {
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.locals.requestTimedOut = true;
+    res.status(503).json({
+      error: 'request_timeout',
+      message: 'The request took too long. Please try again.',
+    });
+  }, REQUEST_TIMEOUT_MS);
+  timer.unref?.();
+
+  const clearTimer = () => clearTimeout(timer);
+  res.once('finish', clearTimer);
+  res.once('close', clearTimer);
+  next();
+});
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -171,21 +201,81 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'not_found', message: 'Route not found.' });
 });
 
-app.use((error, _req, res, _next) => {
+app.use((error, _req, res, next) => {
+  if (res.headersSent) return next(error);
   if (error?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'invalid_json', message: 'Request body is not valid JSON.' });
   }
+  if (res.locals.requestTimedOut) return undefined;
   console.error('[app] unhandled error:', error);
   return res.status(500).json({ error: 'internal_error', message: 'Unexpected server error.' });
 });
 
+let server = null;
+let shuttingDown = false;
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[app] received ${signal} — stopping new connections`);
+  if (!server) {
+    process.exit(0);
+    return;
+  }
+  const forceExit = setTimeout(() => {
+    console.error('[app] graceful shutdown timed out');
+    process.exit(1);
+  }, 10_000);
+  forceExit.unref();
+  server.close(() => {
+    clearTimeout(forceExit);
+    console.log('[app] shutdown complete');
+    process.exit(0);
+  });
+  server.closeIdleConnections?.();
+}
+
+async function runMigrationsWithRetry() {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await runMigrations();
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(`[app] migrations failed (attempt ${attempt}/3):`, error?.message ?? error);
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+    }
+  }
+  throw lastError;
+}
+
 async function start() {
-  await runMigrations();
-  app.listen(env.port, () => {
+  await runMigrationsWithRetry();
+  server = app.listen(env.port, () => {
     console.log(`[app] shared-backend listening on http://localhost:${env.port}`);
     console.log(`[app] health check: http://localhost:${env.port}/health`);
   });
+
+  // Keep idle sockets slightly shorter than Render's proxy timeout, and make
+  // sure a stalled request cannot occupy the listener forever.
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
+  server.requestTimeout = 75_000;
+  server.on('error', (error) => {
+    console.error('[app] server error:', error);
+  });
 }
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// A background promise (push delivery, cache cleanup, etc.) must not take the
+// entire API down. Route-level errors are already handled by
+// express-async-errors; this is a final safety net with a visible log.
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] unhandled rejection:', reason);
+});
 
 // Exported for serverless hosts (Vercel's `api/index.js`); they import the
 // Express app instead of starting a long-running listener.

@@ -1,17 +1,20 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 
 /**
  * PIN / password hashing with scrypt (node:crypto, no external dependency).
  * Stored format: "scrypt:<salt-hex>:<hash-hex>"
  */
 
-export function hashCredential(credential) {
+const scryptAsync = promisify(scrypt);
+
+export async function hashCredential(credential) {
   const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(String(credential), salt, 32).toString('hex');
-  return `scrypt:${salt}:${hash}`;
+  const hash = await scryptAsync(String(credential), salt, 32);
+  return `scrypt:${salt}:${hash.toString('hex')}`;
 }
 
-export function verifyCredential(credential, stored) {
+export async function verifyCredential(credential, stored) {
   if (!stored || typeof stored !== 'string') return false;
   const parts = stored.split(':');
   if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
@@ -25,7 +28,7 @@ export function verifyCredential(credential, stored) {
   }
   if (expected.length === 0) return false;
 
-  const candidate = scryptSync(String(credential), salt, expected.length);
+  const candidate = await scryptAsync(String(credential), salt, expected.length);
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 

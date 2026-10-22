@@ -233,14 +233,14 @@ router.post('/vet/setup-pin', async (req, res) => {
       // Vet user created earlier but application never submitted — allow re-setup.
       await db.execute({
         sql: `UPDATE users SET email = ?, email_verified = 1, pin_hash = ?, pin_type = ?, updated_at = ? WHERE id = ?`,
-        args: [verified.email, hashCredential(credential), pinType, Date.now(), existing.id],
+        args: [verified.email, await hashCredential(credential), pinType, Date.now(), existing.id],
       });
     } else {
       const now = Date.now();
       await db.execute({
         sql: `INSERT INTO users (id, phone, role, email, email_verified, pin_hash, pin_type, preferred_language, created_at, updated_at)
           VALUES (?, ?, 'vet', ?, 1, ?, ?, 'hi', ?, ?)`,
-        args: [randomUUID(), phone, verified.email, hashCredential(credential), pinType, now, now],
+        args: [randomUUID(), phone, verified.email, await hashCredential(credential), pinType, now, now],
       });
     }
 
@@ -274,7 +274,7 @@ router.post('/vet/login', async (req, res) => {
     if (!user || user.role !== 'vet' || !user.pin_hash) {
       return res.status(404).json({ error: 'user_not_found', message: 'No vet account found for this phone number.' });
     }
-    if (!verifyCredential(credential, user.pin_hash)) {
+    if (!(await verifyCredential(credential, user.pin_hash))) {
       return res.status(401).json({ error: 'invalid_credential', message: 'Incorrect PIN or password.' });
     }
 
@@ -338,7 +338,7 @@ router.post('/vet/reset-pin', async (req, res) => {
 
     await db.execute({
       sql: 'UPDATE users SET pin_hash = ?, pin_type = ?, updated_at = ? WHERE id = ?',
-      args: [hashCredential(credential), pinType, Date.now(), user.id],
+      args: [await hashCredential(credential), pinType, Date.now(), user.id],
     });
 
     const updated = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [user.id] });
@@ -398,7 +398,7 @@ router.post('/farmer/login', async (req, res) => {
         message: 'This account still needs a PIN. Use "Forgot PIN" to set one via email.',
       });
     }
-    if (!verifyCredential(pin, user.pin_hash)) {
+    if (!(await verifyCredential(pin, user.pin_hash))) {
       return res.status(401).json({ error: 'invalid_credential', message: 'Incorrect PIN.' });
     }
 
@@ -478,7 +478,7 @@ router.post('/farmer/register', async (req, res) => {
       await db.execute({
         sql: `UPDATE users SET name = ?, email = ?, email_verified = 1, pin_hash = ?, pin_type = 'pin',
             preferred_language = ?, updated_at = ? WHERE id = ?`,
-        args: [name, verified.email, hashCredential(pin), preferredLanguage, now, existing.id],
+        args: [name, verified.email, await hashCredential(pin), preferredLanguage, now, existing.id],
       });
       user = await findUserByPhone(phone);
     } else {
@@ -486,7 +486,7 @@ router.post('/farmer/register', async (req, res) => {
       await db.execute({
         sql: `INSERT INTO users (id, phone, role, name, email, email_verified, pin_hash, pin_type, preferred_language, created_at, updated_at)
           VALUES (?, ?, 'farmer', ?, ?, 1, ?, 'pin', ?, ?, ?)`,
-        args: [userId, phone, name, verified.email, hashCredential(pin), preferredLanguage, now, now],
+        args: [userId, phone, name, verified.email, await hashCredential(pin), preferredLanguage, now, now],
       });
       user = await findUserByPhone(phone);
     }
@@ -544,7 +544,7 @@ router.post('/farmer/reset-pin', async (req, res) => {
 
     await db.execute({
       sql: `UPDATE users SET pin_hash = ?, pin_type = 'pin', email_verified = 1, updated_at = ? WHERE id = ?`,
-      args: [hashCredential(pin), Date.now(), user.id],
+      args: [await hashCredential(pin), Date.now(), user.id],
     });
 
     const updated = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [user.id] });

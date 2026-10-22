@@ -8,6 +8,20 @@ import { ensureFirebase } from './firebaseAdmin.js';
  * firebase-admin messaging.
  */
 
+const PUSH_TIMEOUT_MS = 10_000;
+
+function withTimeout(promise, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${PUSH_TIMEOUT_MS}ms`)),
+      PUSH_TIMEOUT_MS,
+    );
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Sends a push notification to every FCM token registered for [uid].
  * Returns { uid, sent, failureCount } — or { skipped: 'no_tokens' }.
@@ -28,11 +42,14 @@ export async function sendPushToUid(uid, title, body) {
     return { uid, sent: 0, failureCount: 0, skipped: 'no_tokens' };
   }
 
-  const result = await getMessaging().sendEachForMulticast({
-    notification: { title, body },
-    data: { title, body },
-    tokens,
-  });
+  const result = await withTimeout(
+    getMessaging().sendEachForMulticast({
+      notification: { title, body },
+      data: { title, body },
+      tokens,
+    }),
+    'FCM send',
+  );
 
   return { uid, sent: result.successCount, failureCount: result.failureCount };
 }

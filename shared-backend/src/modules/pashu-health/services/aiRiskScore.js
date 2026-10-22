@@ -1,7 +1,7 @@
 import Groq from 'groq-sdk';
 import { env } from '../../../config/env.js';
 
-const groq = new Groq({ apiKey: env.groqApiKey });
+const groq = new Groq({ apiKey: env.groqApiKey, timeout: 20_000, maxRetries: 0 });
 const MODEL = 'openai/gpt-oss-120b';
 const MAX_COMPLETION_TOKENS = 16384;
 const REASONING_EFFORT = 'low';

@@ -4,7 +4,9 @@
  */
 
 export async function fetchPincodeOffices(code) {
-  const response = await fetch(`https://api.postalpincode.in/pincode/${code}`);
+  const response = await fetch(`https://api.postalpincode.in/pincode/${code}`, {
+    signal: AbortSignal.timeout(8_000),
+  });
   const data = await response.json();
 
   if (!Array.isArray(data) || data.length === 0) return null;

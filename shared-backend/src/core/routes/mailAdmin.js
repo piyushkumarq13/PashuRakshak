@@ -17,8 +17,9 @@ const router = Router();
  */
 router.get('/admin/mail', adminSecret, async (_req, res) => {
   const status = getMailerStatus();
-  const brevoAccount = status.brevoConfigured ? await checkBrevoAccount() : null;
-  const brevoSenders = status.brevoConfigured ? await listBrevoSenders() : null;
+  const [brevoAccount, brevoSenders] = status.brevoConfigured
+    ? await Promise.all([checkBrevoAccount(), listBrevoSenders()])
+    : [null, null];
   const runtime = {
     nodeEnv: env.nodeEnv,
     renderServiceName: process.env.RENDER_SERVICE_NAME ?? null,

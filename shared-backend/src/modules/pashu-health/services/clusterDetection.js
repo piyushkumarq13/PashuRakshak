@@ -99,7 +99,9 @@ export async function detectClusterForReport(report, appId = null) {
       args: [alertId, message, Date.now()],
     });
     // Best-effort push to registered vets for this app — never fails detection.
-    await notifyVets(appId, message);
+    void notifyVets(appId, message).catch((error) => {
+      console.error('[clusterDetection] vet notification failed:', error?.message ?? error);
+    });
   }
 
   const placeholders = involvedIds.map(() => '?').join(', ');
@@ -200,7 +202,10 @@ export async function categorizeAndAssign(report, appId) {
   }
 }
 
-/** Pushes the cluster message to every device_tokens row with role='vet' for this app. */
+/**
+ * Pushes the cluster message to every device_tokens row with role='vet' for this app.
+ * Best-effort and parallel: one slow FCM call must not hold up report ingestion.
+ */
 async function notifyVets(appId, message) {
   if (!appId) return;
 
@@ -211,16 +216,100 @@ async function notifyVets(appId, message) {
       args: [appId],
     });
 
-    for (const row of vets.rows) {
-      try {
-        await sendPushToUid(row.uid, 'PashuRakshak cluster alert', message);
-      } catch (error) {
-        console.error('[clusterDetection] vet push failed for uid', row.uid, error?.message ?? error);
-      }
-    }
+    await Promise.allSettled(
+      vets.rows.map(async (row) => {
+        try {
+          await sendPushToUid(row.uid, 'PashuRakshak cluster alert', message);
+        } catch (error) {
+          console.error('[clusterDetection] vet push failed for uid', row.uid, error?.message ?? error);
+        }
+      }),
+    );
   } catch (error) {
     console.error('[clusterDetection] vet lookup failed:', error?.message ?? error);
   }
+}
+
+const CLUSTER_GRID_DEG = 0.1;
+
+function clusterGridKey(latitude, longitude) {
+  return `${Math.floor(latitude / CLUSTER_GRID_DEG)}:${Math.floor(longitude / CLUSTER_GRID_DEG)}`;
+}
+
+/**
+ * Groups reports into connected components (single-linkage, 5 km).
+ *
+ * The old implementation compared every report against every group member
+ * repeatedly, which blocks the event loop for seconds as report volume grows.
+ * A spatial grid limits distance checks to nearby cells while producing the
+ * exact same connected components.
+ */
+function groupConnectedReports(reports) {
+  const parent = new Int32Array(reports.length);
+  for (let i = 0; i < parent.length; i += 1) parent[i] = i;
+
+  const find = (start) => {
+    let root = start;
+    while (parent[root] !== root) root = parent[root];
+    let current = start;
+    while (parent[current] !== current) {
+      const next = parent[current];
+      parent[current] = root;
+      current = next;
+    }
+    return root;
+  };
+
+  const union = (left, right) => {
+    const a = find(left);
+    const b = find(right);
+    if (a !== b) parent[b] = a;
+  };
+
+  const cells = new Map();
+  for (let i = 0; i < reports.length; i += 1) {
+    const latitude = Number(reports[i].latitude);
+    const longitude = Number(reports[i].longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    const key = clusterGridKey(latitude, longitude);
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(i);
+    else cells.set(key, [i]);
+  }
+
+  for (const [key, indexes] of cells) {
+    const [cellX, cellY] = key.split(':').map(Number);
+    const nearby = [];
+    for (let dx = -2; dx <= 2; dx += 1) {
+      for (let dy = -2; dy <= 2; dy += 1) {
+        const bucket = cells.get(`${cellX + dx}:${cellY + dy}`);
+        if (!bucket) continue;
+        for (const index of bucket) nearby.push(index);
+      }
+    }
+
+    for (const left of indexes) {
+      const a = reports[left];
+      const latA = Number(a.latitude);
+      const lonA = Number(a.longitude);
+      for (const right of nearby) {
+        if (right <= left) continue;
+        const b = reports[right];
+        if (haversineKm(latA, lonA, Number(b.latitude), Number(b.longitude)) <= RADIUS_KM) {
+          union(left, right);
+        }
+      }
+    }
+  }
+
+  const groups = new Map();
+  for (let i = 0; i < reports.length; i += 1) {
+    const root = find(i);
+    const group = groups.get(root);
+    if (group) group.push(reports[i]);
+    else groups.set(root, [reports[i]]);
+  }
+  return [...groups.values()];
 }
 
 /**
@@ -234,60 +323,38 @@ export async function getActiveClusters() {
     sql: `SELECT id, latitude, longitude, status, created_at, farmer_id, animal_id
       FROM pashu_symptom_reports
       WHERE created_at >= ? AND status != 'resolved'
-      ORDER BY created_at ASC`,
+      ORDER BY created_at ASC, id ASC`,
     args: [cutoff],
   });
 
-  const reports = result.rows;
-  const assigned = new Set();
+  const groups = groupConnectedReports(result.rows);
   const clusters = [];
 
-  for (let i = 0; i < reports.length; i += 1) {
-    if (assigned.has(reports[i].id)) continue;
-
-    // Grow a group from this seed via single-linkage (any member within radius).
-    const group = [reports[i]];
-    assigned.add(reports[i].id);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const candidate of reports) {
-        if (assigned.has(candidate.id)) continue;
-        const linked = group.some(
-          (member) =>
-            haversineKm(
-              Number(member.latitude),
-              Number(member.longitude),
-              Number(candidate.latitude),
-              Number(candidate.longitude),
-            ) <= RADIUS_KM,
-        );
-        if (linked) {
-          group.push(candidate);
-          assigned.add(candidate.id);
-          grew = true;
-        }
-      }
-    }
-
+  for (const group of groups) {
     if (group.length < MIN_REPORTS) continue;
 
-    const centerLat =
-      group.reduce((sum, r) => sum + Number(r.latitude), 0) / group.length;
-    const centerLng =
-      group.reduce((sum, r) => sum + Number(r.longitude), 0) / group.length;
-    const createdAts = group.map((r) => Number(r.created_at));
+    let centerLat = 0;
+    let centerLng = 0;
+    let firstReportAt = Infinity;
+    let lastReportAt = -Infinity;
+    for (const report of group) {
+      centerLat += Number(report.latitude);
+      centerLng += Number(report.longitude);
+      const createdAt = Number(report.created_at);
+      if (createdAt < firstReportAt) firstReportAt = createdAt;
+      if (createdAt > lastReportAt) lastReportAt = createdAt;
+    }
 
     clusters.push({
       reportCount: group.length,
-      reportIds: group.map((r) => r.id),
-      centerLat: round(centerLat, 5),
-      centerLng: round(centerLng, 5),
+      reportIds: group.map((report) => report.id),
+      centerLat: round(centerLat / group.length, 5),
+      centerLng: round(centerLng / group.length, 5),
       radiusKm: RADIUS_KM,
       windowDays: 7,
-      firstReportAt: Math.min(...createdAts),
-      lastReportAt: Math.max(...createdAts),
-      statuses: [...new Set(group.map((r) => r.status))],
+      firstReportAt,
+      lastReportAt,
+      statuses: [...new Set(group.map((report) => report.status))],
     });
   }
 

@@ -16,18 +16,23 @@ function scopedKey(req) {
 export async function idempotencyReplay(db, req, res) {
   const key = scopedKey(req);
   if (!key) return false;
-  const existing = await db.execute({
-    sql: 'SELECT response_json FROM idempotency_keys WHERE key = ? AND endpoint = ?',
-    args: [key, req.originalUrl],
-  });
-  if (existing.rows.length > 0) {
-    try {
-      const body = JSON.parse(String(existing.rows[0].response_json));
-      res.status(200).json(body);
-      return true;
-    } catch {
-      return false;
+  try {
+    const existing = await db.execute({
+      sql: 'SELECT response_json FROM idempotency_keys WHERE key = ? AND endpoint = ?',
+      args: [key, req.originalUrl],
+    });
+    if (existing.rows.length > 0) {
+      try {
+        const body = JSON.parse(String(existing.rows[0].response_json));
+        res.status(200).json(body);
+        return true;
+      } catch {
+        return false;
+      }
     }
+  } catch (error) {
+    // Losing the cache must not turn a retry into a 500; let the request run.
+    console.error('[idempotency] lookup failed:', error?.message ?? error);
   }
   return false;
 }
