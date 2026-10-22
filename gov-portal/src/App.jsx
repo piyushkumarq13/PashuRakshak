@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { AUTH_EXPIRED_EVENT, getToken, setToken } from './api'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
+import Icon, { BrandMark } from './components/Icon'
 
-/**
- * Government portal for District Magistrates.
- *
- * Login: email → OTP → session token (no password).
- * Dashboard: overview, vet applications (approve/reject, district-scoped),
- * reports, clusters, gov alerts (acknowledge), users.
- */
+function scopeLabel(district) {
+  if (!district) return 'District scope'
+  return district === '*' ? 'All districts' : district
+}
+
 export default function App() {
   const [magistrate, setMagistrate] = useState(null)
   const [checking, setChecking] = useState(true)
@@ -20,8 +19,6 @@ export default function App() {
       setChecking(false)
       return
     }
-    // Try to decode the JWT-ish payload (it's base64url JSON) to restore
-    // basic info; the backend re-validates on every API call anyway.
     try {
       const payloadPart = token.split('.')[0]
       if (payloadPart) {
@@ -35,7 +32,7 @@ export default function App() {
         }
       }
     } catch {
-      // fall through to logout
+      // Invalid local token; clear it below.
     }
     setToken(null)
     setChecking(false)
@@ -66,77 +63,131 @@ export default function App() {
 
   if (checking) {
     return (
-      <div className="app">
-        <div className="card center-text">
-          <p>Loading…</p>
+      <div className="app-shell">
+        <div className="loading-screen">
+          <BrandMark size={54} />
+          <div>
+            <strong>PashuRakshak</strong>
+            <span>Restoring your secure session...</span>
+          </div>
+          <div className="loading-bar" aria-hidden="true" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="app">
-      <header className="header">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">🛡️</div>
-          <div className="brand-text">
-            <h1>
-              PashuRakshak <span>Government Portal</span>
-            </h1>
-            {magistrate && (
-              <p className="header-sub">
-                {magistrate.name ? `${magistrate.name} · ` : ''}
-                District Magistrate, {magistrate.district}
-              </p>
-            )}
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="/" aria-label="PashuRakshak Government Portal home">
+          <BrandMark />
+          <div className="brand-copy">
+            <span className="brand-name">PashuRakshak</span>
+            <span className="brand-divider" aria-hidden="true" />
+            <span className="brand-product">Government Portal</span>
           </div>
-        </div>
-        {magistrate && (
-          <button className="btn-secondary" onClick={handleSignOut}>
-            Sign out
-          </button>
+        </a>
+
+        {magistrate ? (
+          <div className="topbar-actions">
+            <span className="scope-pill">
+              <Icon name="shield" size={15} />
+              {scopeLabel(magistrate.district)}
+            </span>
+            <div className="account">
+              <span className="avatar" aria-hidden="true">
+                {(magistrate.name || 'DM').slice(0, 2).toUpperCase()}
+              </span>
+              <span className="account-copy">
+                <strong>{magistrate.name || 'District Magistrate'}</strong>
+                <span>{magistrate.email}</span>
+              </span>
+            </div>
+            <button className="icon-button" onClick={handleSignOut} aria-label="Sign out" title="Sign out">
+              <Icon name="logout" size={18} />
+            </button>
+          </div>
+        ) : (
+          <div className="topbar-actions">
+            <span className="topbar-note">
+              <span className="status-dot" />
+              Secure district access
+            </span>
+          </div>
         )}
       </header>
 
       <main className="main">
         {magistrate ? (
-          <Dashboard magistrate={magistrate} />
+          <Dashboard magistrate={magistrate} onSignOut={handleSignOut} />
         ) : (
-          <div className="auth-shell">
-            <aside className="auth-brand">
-              <div>
-                <p className="auth-brand-kicker">District oversight</p>
-                <h2>Livestock health, one dashboard.</h2>
-                <p className="auth-brand-lead">
-                  Review vet applications, track symptom reports, monitor outbreak clusters and
-                  acknowledge government alerts — scoped to your district.
+          <div className="auth-layout">
+            <section className="auth-hero">
+              <div className="auth-hero-glow" aria-hidden="true" />
+              <div className="hero-content">
+                <span className="hero-kicker">
+                  <Icon name="shield" size={15} />
+                  District Magistrate Console
+                </span>
+                <h1>Livestock health intelligence for your district.</h1>
+                <p className="hero-lead">
+                  Review veterinarian applications, follow symptom reports, spot outbreak
+                  clusters, and act on government alerts from one secure workspace.
                 </p>
+
+                <div className="hero-stats">
+                  <div>
+                    <strong>7 days</strong>
+                    <span>Outbreak window</span>
+                  </div>
+                  <div>
+                    <strong>5 km</strong>
+                    <span>Cluster radius</span>
+                  </div>
+                  <div>
+                    <strong>OTP</strong>
+                    <span>Passwordless access</span>
+                  </div>
+                </div>
               </div>
-              <ul className="auth-brand-points">
-                <li>
-                  <span className="tick" aria-hidden="true">✓</span>
-                  Approve or reject veterinarian applications with review notes
-                </li>
-                <li>
-                  <span className="tick" aria-hidden="true">✓</span>
-                  Live symptom reports with AI risk scoring and status filters
-                </li>
-                <li>
-                  <span className="tick" aria-hidden="true">✓</span>
-                  Outbreak clusters detected on a 7-day / 5 km rule
-                </li>
-                <li>
-                  <span className="tick" aria-hidden="true">✓</span>
-                  Passwordless sign-in — email OTP only
-                </li>
-              </ul>
-            </aside>
-            <div className="auth-form-side">
+
+              <div className="hero-features">
+                <div className="hero-feature">
+                  <span className="feature-icon">
+                    <Icon name="applications" size={18} />
+                  </span>
+                  <div>
+                    <strong>Review with context</strong>
+                    <span>Approve or reject vet applications with a clear audit note.</span>
+                  </div>
+                </div>
+                <div className="hero-feature">
+                  <span className="feature-icon">
+                    <Icon name="clusters" size={18} />
+                  </span>
+                  <div>
+                    <strong>See risks earlier</strong>
+                    <span>AI-scored reports and live clusters surface what needs attention.</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="auth-panel">
               <LoginScreen onLoggedIn={handleLoggedIn} />
-            </div>
+              <p className="security-note">
+                <Icon name="shield" size={14} />
+                Protected by email OTP. Sessions are signed and expire automatically.
+              </p>
+            </section>
           </div>
         )}
       </main>
+
+      <footer className="site-footer">
+        <span>PashuRakshak · Livestock Health Network</span>
+        <span>District administration workspace</span>
+      </footer>
     </div>
   )
 }

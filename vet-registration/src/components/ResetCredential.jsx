@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { vetResetPin, setToken } from '../api'
 import CredentialInput from './CredentialInput'
+import Icon from './Icon'
 
 /**
- * Forgot flow — final step: choose a new PIN/password after the reset code
+ * Forgot flow final step: choose a new PIN/password after the reset code
  * was verified, then sign the vet in.
  */
 export default function ResetCredential({ verifyToken, onDone, onBack }) {
@@ -37,12 +38,21 @@ export default function ResetCredential({ verifyToken, onDone, onBack }) {
 
   return (
     <div className="card">
-      <h2>Choose a new credential</h2>
-      <p className="muted">Code verified. Pick a new {pinType === 'pin' ? 'PIN' : 'password'}.</p>
-      <form onSubmit={handleSubmit}>
+      <div className="card-head">
+        <span className="card-icon">
+          <Icon name="shield" size={21} />
+        </span>
+        <div>
+          <p className="eyebrow">Account recovery</p>
+          <h2>Choose a new credential</h2>
+          <p>Your reset code is verified. Pick a new way to sign in.</p>
+        </div>
+      </div>
+
+      <form className="stack-form" onSubmit={handleSubmit}>
         <CredentialInput
           id="reset-credential"
-          label={pinType === 'pin' ? 'New 6-digit PIN' : 'New password'}
+          label={pinType === 'pin' ? 'New six-digit PIN' : 'New password'}
           value={credential}
           onChange={setCredential}
           pinType={pinType}
@@ -55,16 +65,31 @@ export default function ResetCredential({ verifyToken, onDone, onBack }) {
           onConfirmChange={setConfirm}
           confirmLabel={`Confirm ${pinType === 'pin' ? 'PIN' : 'password'}`}
         />
-        {error && <p className="error">{error}</p>}
-        <div className="btn-row">
-          <button type="button" className="btn-secondary" onClick={onBack}>
-            Back
-          </button>
-          <button type="submit" disabled={loading}>
-            {loading ? 'Saving…' : 'Save & sign in'}
-          </button>
-        </div>
+
+        {error && (
+          <p className="form-message form-message-error" role="alert">
+            <Icon name="alert" size={15} /> {error}
+          </p>
+        )}
+
+        <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
+          {loading ? (
+            <>
+              <span className="spinner" /> Saving credential...
+            </>
+          ) : (
+            <>
+              Save and sign in <Icon name="arrowRight" size={16} />
+            </>
+          )}
+        </button>
       </form>
+
+      <div className="card-actions single">
+        <button type="button" className="text-button" onClick={onBack}>
+          <Icon name="arrowRight" size={14} className="rotate-180" /> Back
+        </button>
+      </div>
     </div>
   )
 }

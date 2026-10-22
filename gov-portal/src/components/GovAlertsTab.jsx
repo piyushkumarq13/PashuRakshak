@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getGovAlerts, acknowledgeAlert } from '../api'
+import Icon from './Icon'
 
 function fmtDate(ms) {
-  return ms ? new Date(Number(ms)).toLocaleString() : '—'
+  if (!ms) return '—'
+  return new Date(Number(ms)).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export default function GovAlertsTab() {
@@ -10,6 +18,7 @@ export default function GovAlertsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
+  const [ackError, setAckError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -28,62 +37,107 @@ export default function GovAlertsTab() {
   }, [load])
 
   async function acknowledge(id) {
+    setAckError('')
     setBusyId(id)
-    const { status } = await acknowledgeAlert(id)
+    const { status, data } = await acknowledgeAlert(id)
     setBusyId(null)
-    if (status === 200) load()
+    if (status === 200) {
+      load()
+    } else {
+      setAckError(data?.message || 'Could not acknowledge this alert.')
+    }
   }
 
-  const unacknowledged = alerts.filter((a) => !Number(a.acknowledged))
+  const unacknowledged = alerts.filter((alert) => !Number(alert.acknowledged))
 
   return (
-    <div className="card">
-      <div className="tab-header">
+    <div className="panel-card">
+      <div className="panel-toolbar">
         <div>
-          <h2>Government alerts</h2>
-          <p className="muted">
-            {unacknowledged.length} unacknowledged · {alerts.length} total
-          </p>
+          <p className="eyebrow">Alerts</p>
+          <h2>Response register</h2>
+          <p>Review and acknowledge critical district notifications.</p>
         </div>
-        <button className="btn-secondary" onClick={load} disabled={loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
+        <button className="btn btn-secondary" onClick={load} disabled={loading}>
+          <Icon name="refresh" size={16} />
+          {loading ? 'Refreshing' : 'Refresh'}
         </button>
       </div>
 
-      {loading && <p className="muted">Loading…</p>}
-      {error && <p className="error">{error}</p>}
-      {!loading && !error && alerts.length === 0 && (
-        <p className="muted">No government alerts yet.</p>
+      <div className="summary-strip">
+        <div className={unacknowledged.length > 0 ? 'is-warning' : ''}>
+          <span>Unacknowledged</span>
+          <strong>{unacknowledged.length}</strong>
+        </div>
+        <div>
+          <span>Total alerts</span>
+          <strong>{alerts.length}</strong>
+        </div>
+        <div>
+          <span>Acknowledged</span>
+          <strong>{alerts.length - unacknowledged.length}</strong>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="loading-panel">
+          <span className="spinner spinner-dark" />
+          <p>Loading alerts...</p>
+        </div>
+      )}
+      {error && (
+        <p className="form-message form-message-error" role="alert">
+          <Icon name="close" size={15} /> {error}
+        </p>
+      )}
+      {ackError && (
+        <p className="form-message form-message-error" role="alert">
+          <Icon name="close" size={15} /> {ackError}
+        </p>
       )}
 
-      <div className="app-list">
-        {alerts.map((a) => {
-          const acked = Number(a.acknowledged) === 1
+      {!loading && !error && alerts.length === 0 && (
+        <div className="empty-state success-state">
+          <span className="empty-icon">
+            <Icon name="shield" size={24} />
+          </span>
+          <h3>No government alerts</h3>
+          <p>New district alerts will appear here when they are issued.</p>
+        </div>
+      )}
+
+      <div className="alert-list">
+        {alerts.map((alert) => {
+          const acked = Number(alert.acknowledged) === 1
           return (
-            <div key={a.id} className={`alert-item ${acked ? 'alert-acked' : ''}`}>
-              <div>
-                <strong>{a.message ?? a.title ?? a.body ?? 'Alert'}</strong>
-                <div className="muted small">
-                  {a.severity ? `Severity: ${a.severity}` : ''}
-                  {a.report_id ? ` · report ${a.report_id}` : ''}
+            <article key={alert.id} className={`alert-card ${acked ? 'is-acked' : ''}`}>
+              <span className={`alert-icon severity-${alert.severity ?? 'medium'}`}>
+                <Icon name={acked ? 'check' : 'alerts'} size={19} />
+              </span>
+              <div className="alert-content">
+                <div className="alert-topline">
+                  <strong>{alert.message ?? alert.title ?? alert.body ?? 'Government alert'}</strong>
+                  <span className={`status-badge ${acked ? 'status-approved' : 'status-pending'}`}>
+                    {acked ? 'acknowledged' : 'unacknowledged'}
+                  </span>
                 </div>
-                <div className="muted small">{fmtDate(a.created_at)}</div>
+                <div className="alert-meta">
+                  {alert.severity && <span>Severity: {alert.severity}</span>}
+                  {alert.report_id && <span>Report: {alert.report_id.slice(0, 8)}</span>}
+                  <span>{fmtDate(alert.created_at)}</span>
+                </div>
               </div>
-              <div className="alert-right">
-                <span className={`status-badge ${acked ? 'status-approved' : 'status-pending'}`}>
-                  {acked ? 'acknowledged' : 'unacknowledged'}
-                </span>
-                {!acked && (
-                  <button
-                    className="btn-secondary"
-                    disabled={busyId === a.id}
-                    onClick={() => acknowledge(a.id)}
-                  >
-                    {busyId === a.id ? '…' : 'Acknowledge'}
-                  </button>
-                )}
-              </div>
-            </div>
+              {!acked && (
+                <button
+                  className="btn btn-secondary btn-small"
+                  disabled={busyId === alert.id}
+                  onClick={() => acknowledge(alert.id)}
+                >
+                  {busyId === alert.id ? <span className="spinner spinner-dark" /> : <Icon name="check" size={15} />}
+                  {busyId === alert.id ? 'Saving' : 'Acknowledge'}
+                </button>
+              )}
+            </article>
           )
         })}
       </div>

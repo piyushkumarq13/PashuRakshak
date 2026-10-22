@@ -1,8 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getUsers } from '../api'
+import Icon from './Icon'
 
 function fmtDate(ms) {
-  return ms ? new Date(Number(ms)).toLocaleDateString() : '—'
+  if (!ms) return '—'
+  return new Date(Number(ms)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function initials(name) {
+  return String(name || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
 }
 
 export default function UsersTab() {
@@ -30,75 +46,118 @@ export default function UsersTab() {
   const rows = users[role]
 
   return (
-    <div className="card">
-      <div className="tab-header">
+    <div className="panel-card">
+      <div className="panel-toolbar">
         <div>
-          <h2>Users</h2>
-          <p className="muted">
-            {users.farmers.length} farmers · {users.vets.length} vets
-          </p>
+          <p className="eyebrow">Directory</p>
+          <h2>Network users</h2>
+          <p>Farmers and veterinarians connected to your district.</p>
         </div>
-        <div className="filter-row">
+        <button className="btn btn-secondary" onClick={load} disabled={loading}>
+          <Icon name="refresh" size={16} />
+          {loading ? 'Refreshing' : 'Refresh'}
+        </button>
+      </div>
+
+      <div className="summary-strip">
+        <div>
+          <span>Farmers</span>
+          <strong>{users.farmers.length}</strong>
+        </div>
+        <div>
+          <span>Veterinarians</span>
+          <strong>{users.vets.length}</strong>
+        </div>
+        <div>
+          <span>Total users</span>
+          <strong>{users.farmers.length + users.vets.length}</strong>
+        </div>
+      </div>
+
+      <div className="filter-bar">
+        <div className="segmented" role="group" aria-label="Filter users by role">
           <button
-            className={`chip ${role === 'farmers' ? 'chip-active' : ''}`}
+            type="button"
+            className={role === 'farmers' ? 'is-active' : ''}
             onClick={() => setRole('farmers')}
           >
             Farmers
           </button>
           <button
-            className={`chip ${role === 'vets' ? 'chip-active' : ''}`}
+            type="button"
+            className={role === 'vets' ? 'is-active' : ''}
             onClick={() => setRole('vets')}
           >
-            Vets
-          </button>
-          <button className="btn-secondary" onClick={load} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+            Veterinarians
           </button>
         </div>
+        <span className="result-count">
+          {rows.length} {role === 'farmers' ? 'farmer' : 'veterinarian'}
+          {rows.length === 1 ? '' : 's'}
+        </span>
       </div>
 
-      {loading && <p className="muted">Loading…</p>}
-      {error && <p className="error">{error}</p>}
+      {loading && (
+        <div className="loading-panel">
+          <span className="spinner spinner-dark" />
+          <p>Loading directory...</p>
+        </div>
+      )}
+      {error && (
+        <p className="form-message form-message-error" role="alert">
+          <Icon name="close" size={15} /> {error}
+        </p>
+      )}
 
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>{role === 'farmers' ? 'Village' : 'Pincode'}</th>
-              <th>{role === 'farmers' ? 'Animals' : 'District / status'}</th>
-              <th>Joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((u) => (
-              <tr key={u.id}>
-                <td>{u.name || '—'}</td>
-                <td>{u.phone || '—'}</td>
-                <td>{u.email || '—'}</td>
-                <td>{role === 'farmers' ? u.village || '—' : u.pincode || '—'}</td>
-                <td>
-                  {role === 'farmers'
-                    ? u.animal_count ?? '—'
-                    : `${u.district || '—'}${
-                        u.application_status ? ` · ${u.application_status}` : ''
-                      }`}
-                </td>
-                <td>{fmtDate(u.created_at)}</td>
-              </tr>
-            ))}
-            {!loading && rows.length === 0 && (
+      {!loading && !error && rows.length === 0 && (
+        <div className="empty-state">
+          <span className="empty-icon">
+            <Icon name="users" size={24} />
+          </span>
+          <h3>No {role} yet</h3>
+          <p>New {role === 'farmers' ? 'farmers' : 'veterinarians'} will appear here.</p>
+        </div>
+      )}
+
+      {!loading && rows.length > 0 && (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={6} className="muted center-text">
-                  No {role} yet.
-                </td>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>{role === 'farmers' ? 'Village' : 'Pincode'}</th>
+                <th>{role === 'farmers' ? 'Animals' : 'District / status'}</th>
+                <th>Joined</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((user) => (
+                <tr key={user.id}>
+                  <td>
+                    <div className="person-cell">
+                      <span className="person-avatar small">{initials(user.name)}</span>
+                      <span className="table-primary">{user.name || '—'}</span>
+                    </div>
+                  </td>
+                  <td>{user.phone || '—'}</td>
+                  <td>{user.email || '—'}</td>
+                  <td>{role === 'farmers' ? user.village || '—' : user.pincode || '—'}</td>
+                  <td>
+                    {role === 'farmers'
+                      ? user.animal_count ?? '—'
+                      : `${user.district || '—'}${
+                          user.application_status ? ` · ${user.application_status}` : ''
+                        }`}
+                  </td>
+                  <td className="date-text">{fmtDate(user.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

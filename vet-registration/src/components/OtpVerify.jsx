@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { sendOtp, verifyOtp } from '../api'
+import Icon from './Icon'
 
 /**
- * Email OTP step — auto-sends a 6-digit code on mount (for the given email)
- * and verifies it. Calls onVerified(verifyToken) on success.
+ * Email OTP step: auto-sends a six-digit code on mount and verifies it.
+ * Calls onVerified(verifyToken) on success.
  */
 export default function OtpVerify({ email, purpose, phone, heading, onVerified, onBack }) {
   const [code, setCode] = useState('')
@@ -15,13 +16,13 @@ export default function OtpVerify({ email, purpose, phone, heading, onVerified, 
   const sentRef = useRef(false)
   const timerRef = useRef(null)
 
-  const send = async () => {
+  async function send() {
     setError('')
     setSending(true)
     const { status, data } = await sendOtp(email, purpose, phone)
     setSending(false)
     if (status === 200) {
-      setInfo(`A 6-digit code was sent to ${data.email ?? email}.`)
+      setInfo(`A six-digit code was sent to ${data.email ?? email}.`)
       const seconds = data.cooldownSeconds ?? 60
       setCooldown(seconds)
       if (timerRef.current) clearInterval(timerRef.current)
@@ -66,32 +67,98 @@ export default function OtpVerify({ email, purpose, phone, heading, onVerified, 
 
   return (
     <div className="card">
-      <h2>{heading ?? 'Enter the code'}</h2>
-      {info && <p className="info">{info}</p>}
-      <form onSubmit={handleVerify}>
-        <label htmlFor="otp">6-digit code</label>
+      <div className="progress-header">
+        <span className="progress-step is-complete">
+          <i>
+            <Icon name="check" size={11} />
+          </i>{' '}
+          Account
+        </span>
+        <span className="progress-line is-complete" />
+        <span className="progress-step is-current">
+          <i>2</i> Verify
+        </span>
+        <span className="progress-line" />
+        <span className="progress-step">
+          <i>3</i> Credential
+        </span>
+      </div>
+
+      <div className="card-head">
+        <span className="card-icon">
+          <Icon name="mail" size={21} />
+        </span>
+        <div>
+          <p className="eyebrow">Email verification</p>
+          <h2>{heading ?? 'Enter the code'}</h2>
+          <p>
+            We sent a code to <strong>{email}</strong>.
+          </p>
+        </div>
+      </div>
+
+      {info && (
+        <p className="form-message form-message-info">
+          <Icon name="info" size={15} /> {info}
+        </p>
+      )}
+
+      <form className="stack-form otp-form" onSubmit={handleVerify}>
+        <label htmlFor="otp">Six-digit code</label>
         <input
           id="otp"
+          className="otp-input"
           type="text"
           inputMode="numeric"
+          autoComplete="one-time-code"
           maxLength={6}
-          placeholder="------"
+          placeholder="000000"
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
           autoFocus
         />
-        {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={loading || code.length !== 6}>
-          {loading ? 'Verifying…' : 'Verify'}
+
+        {error && (
+          <p className="form-message form-message-error" role="alert">
+            <Icon name="alert" size={15} /> {error}
+          </p>
+        )}
+
+        <button
+          className="btn btn-primary btn-block"
+          type="submit"
+          disabled={loading || code.length !== 6}
+        >
+          {loading ? (
+            <>
+              <span className="spinner" /> Verifying...
+            </>
+          ) : (
+            <>
+              Verify email <Icon name="arrowRight" size={16} />
+            </>
+          )}
         </button>
       </form>
-      <div className="btn-row">
-        <button type="button" className="btn-secondary" onClick={send} disabled={sending || cooldown > 0}>
-          {cooldown > 0 ? `Resend in ${cooldown}s` : sending ? 'Sending…' : 'Resend code'}
+
+      <div className="card-actions">
+        <button
+          type="button"
+          className="text-button"
+          onClick={send}
+          disabled={sending || cooldown > 0}
+        >
+          <Icon name="refresh" size={14} />
+          {cooldown > 0 ? `Resend in ${cooldown}s` : sending ? 'Sending...' : 'Resend code'}
         </button>
-        <button type="button" className="btn-secondary" onClick={onBack}>
-          Back
+        <button type="button" className="text-button" onClick={onBack}>
+          <Icon name="arrowRight" size={14} className="rotate-180" /> Back
         </button>
+      </div>
+
+      <div className="security-note">
+        <Icon name="shield" size={14} />
+        Never share this code. PashuRakshak will never ask for it.
       </div>
     </div>
   )

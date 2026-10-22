@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { govRequestOtp, govVerifyOtp } from '../api'
+import Icon from './Icon'
 
-/**
- * Two-step magistrate login: email → 6-digit OTP → session.
- * (Accounts are seeded via POST /api/v1/core/admin/magistrates.)
- */
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
 export default function LoginScreen({ onLoggedIn }) {
-  const [step, setStep] = useState('email') // email | otp
+  const [step, setStep] = useState('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,9 +35,11 @@ export default function LoginScreen({ onLoggedIn }) {
   async function sendOtp(e) {
     e?.preventDefault()
     setError('')
+    setInfo('')
     const trimmed = email.trim().toLowerCase()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      return setError('Enter a valid email address.')
+    if (!isValidEmail(trimmed)) {
+      setError('Enter your registered email address.')
+      return
     }
     setLoading(true)
     const { status, data } = await govRequestOtp(trimmed)
@@ -46,7 +49,7 @@ export default function LoginScreen({ onLoggedIn }) {
       setStep('otp')
       startCooldown(data.cooldownSeconds ?? 60)
     } else {
-      setError(data.message || 'Could not send the code.')
+      setError(data.message || 'Could not send the code. Please try again.')
       if (data.retryAfterSeconds) startCooldown(data.retryAfterSeconds)
     }
   }
@@ -61,81 +64,132 @@ export default function LoginScreen({ onLoggedIn }) {
     if (status === 200 && data.token) {
       onLoggedIn(data)
     } else {
-      setError(data.message || 'Incorrect or expired code.')
+      setError(data.message || 'Incorrect or expired code. Request a new one.')
     }
   }
 
-  if (step === 'otp') {
-    return (
-      <div className="card login-card">
-        <h2>Enter the code</h2>
-        {info && <p className="info">{info}</p>}
-        <form onSubmit={verify}>
-          <label htmlFor="gov-otp">6-digit code</label>
-          <input
-            id="gov-otp"
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            placeholder="------"
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-            autoFocus
-          />
-          {error && <p className="error">{error}</p>}
-          <button type="submit" disabled={loading || code.length !== 6}>
-            {loading ? 'Verifying…' : 'Sign in'}
-          </button>
-        </form>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={sendOtp}
-            disabled={loading || cooldown > 0}
-          >
-            {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              setStep('email')
-              setCode('')
-              setError('')
-            }}
-          >
-            Change email
-          </button>
-        </div>
-      </div>
-    )
+  function changeEmail() {
+    setStep('email')
+    setCode('')
+    setError('')
+    setInfo('')
   }
 
   return (
-    <div className="card login-card">
-      <h2>District Magistrate sign in</h2>
-      <p className="muted">
-        Sign in with your registered email. We’ll send a 6-digit verification code —
-        no password needed.
-      </p>
-      <form onSubmit={sendOtp}>
-        <label htmlFor="gov-email">Email address</label>
-        <input
-          id="gov-email"
-          type="email"
-          placeholder="dm@example.gov.in"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoFocus
-        />
-        {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={loading}>
-          {loading ? 'Sending…' : 'Send verification code →'}
-        </button>
-      </form>
-      <p className="muted footnote">
-        Don’t have an account? Magistrates are onboarded by the platform admin.
+    <div className="login-card">
+      <div className="login-heading">
+        <span className="login-icon">
+          <Icon name={step === 'otp' ? 'mail' : 'shield'} size={22} />
+        </span>
+        <div>
+          <p className="eyebrow">{step === 'otp' ? 'One final step' : 'Authorised personnel'}</p>
+          <h2>{step === 'otp' ? 'Check your inbox' : 'Sign in to your district'}</h2>
+        </div>
+      </div>
+
+      <div className="login-steps" aria-label="Sign in progress">
+        <span className={step === 'email' ? 'is-current' : 'is-complete'}>
+          <i>1</i> Email
+        </span>
+        <span className="step-line" aria-hidden="true" />
+        <span className={step === 'otp' ? 'is-current' : ''}>
+          <i>2</i> Verify
+        </span>
+      </div>
+
+      {step === 'email' ? (
+        <>
+          <p className="login-lead">
+            Use the email address registered by the platform administrator. We will send a
+            one-time verification code, so there is no password to remember.
+          </p>
+          <form onSubmit={sendOtp} className="stack-form">
+            <label htmlFor="gov-email">Official email address</label>
+            <div className="input-shell">
+              <Icon name="mail" size={17} />
+              <input
+                id="gov-email"
+                type="email"
+                autoComplete="email"
+                placeholder="dm@example.gov.in"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {error && (
+              <p className="form-message form-message-error" role="alert">
+                <Icon name="close" size={15} />
+                {error}
+              </p>
+            )}
+            <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
+              {loading ? <span className="spinner" /> : <Icon name="arrowRight" size={17} />}
+              {loading ? 'Sending secure code' : 'Continue with email'}
+            </button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p className="login-lead">
+            Enter the 6-digit code sent to <strong>{email}</strong>. The code expires shortly
+            for your security.
+          </p>
+          {info && (
+            <p className="form-message form-message-info">
+              <Icon name="mail" size={15} />
+              {info}
+            </p>
+          )}
+          <form onSubmit={verify} className="stack-form">
+            <label htmlFor="gov-otp">Verification code</label>
+            <input
+              id="gov-otp"
+              className="otp-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              autoFocus
+            />
+            {error && (
+              <p className="form-message form-message-error" role="alert">
+                <Icon name="close" size={15} />
+                {error}
+              </p>
+            )}
+            <button
+              className="btn btn-primary btn-block"
+              type="submit"
+              disabled={loading || code.length !== 6}
+            >
+              {loading ? <span className="spinner" /> : <Icon name="shield" size={17} />}
+              {loading ? 'Verifying' : 'Verify and sign in'}
+            </button>
+          </form>
+          <div className="login-actions">
+            <button
+              type="button"
+              className="text-button"
+              onClick={sendOtp}
+              disabled={loading || cooldown > 0}
+            >
+              <Icon name="refresh" size={14} />
+              {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+            </button>
+            <button type="button" className="text-button" onClick={changeEmail}>
+              Change email
+            </button>
+          </div>
+        </>
+      )}
+
+      <p className="login-footnote">
+        <Icon name="shield" size={14} />
+        Accounts are provisioned by the PashuRakshak platform administrator.
       </p>
     </div>
   )
