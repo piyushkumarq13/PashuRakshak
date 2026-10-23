@@ -60,10 +60,11 @@ class SyncWorker(
                 }
             }
 
-            // Persist photo URLs for reports that were already synced (and thus already pushed).
+            // Persist photo URLs for reports that were already synced (and thus already
+            // pushed). The advisory already exists, so skip the slow AI call here.
             for (report in reportsThatGotPhoto) {
                 if (report.synced) {
-                    runCatching { reportPushApi.pushReport(report) }
+                    runCatching { reportPushApi.pushReport(report, skipAi = true) }
                         .onFailure { Log.w(TAG, "Re-push after photo upload failed for ${report.id}: ${it.message}") }
                 }
             }
@@ -84,7 +85,8 @@ class SyncWorker(
 
             // Phase 3: push animals/vaccinations/alerts and pull remote → local.
             runCatching { com.pashurakshak.app.data.sync.RemoteSync.syncAll() }
-            val remaining = reportRepository.getUnsyncedReports().size
+            val remaining = reportRepository.countUnsyncedReports() +
+                ServiceLocator.pendingSyncRepository.count()
             SyncStatusHolder.onCycleCompleted(remaining = remaining)
             // Success even with leftovers: failures stay queued and are retried by the
             // periodic work / next reconnect, not by hammering WorkManager retries.
@@ -92,7 +94,8 @@ class SyncWorker(
         } catch (error: Throwable) {
             Log.e(TAG, "Sync cycle failed", error)
             val remaining = runCatching {
-                ServiceLocator.reportRepository.getUnsyncedReports().size
+                ServiceLocator.reportRepository.countUnsyncedReports() +
+                    ServiceLocator.pendingSyncRepository.count()
             }.getOrDefault(-1)
             SyncStatusHolder.onCycleCompleted(remaining = remaining.coerceAtLeast(0))
             // Keep the queue untouched; next cycle (15 min or reconnect) retries.

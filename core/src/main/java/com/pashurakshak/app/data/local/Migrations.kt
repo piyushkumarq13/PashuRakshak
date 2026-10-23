@@ -14,7 +14,24 @@ object Migrations {
         Migration(version = 4, sql = ADD_QR_AND_DISEASE_COLUMNS),
         Migration(version = 5, sql = ADD_QR_VERIFIED_COLUMNS),
         Migration(version = 6, sql = ADD_RESOLUTION_COLUMNS),
+        Migration(version = 7, sql = PENDING_SYNC_QUEUE),
     )
+
+    private const val PENDING_SYNC_QUEUE = """
+        CREATE TABLE IF NOT EXISTS pending_sync (
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            operation TEXT NOT NULL CHECK (operation IN ('upsert', 'delete')),
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (entity_type, entity_id)
+        );
+        INSERT OR IGNORE INTO pending_sync (entity_type, entity_id, operation, updated_at)
+            SELECT 'animal', id, 'upsert', CAST(strftime('%s', 'now') AS INTEGER) * 1000 FROM animals;
+        INSERT OR IGNORE INTO pending_sync (entity_type, entity_id, operation, updated_at)
+            SELECT 'vaccination', id, 'upsert', CAST(strftime('%s', 'now') AS INTEGER) * 1000 FROM vaccinations;
+        INSERT OR IGNORE INTO pending_sync (entity_type, entity_id, operation, updated_at)
+            SELECT 'alert', id, 'upsert', CAST(strftime('%s', 'now') AS INTEGER) * 1000 FROM alerts;
+    """
 
     private const val ADD_VET_ASSESSMENT_COLUMNS = """
         ALTER TABLE symptom_reports ADD COLUMN assigned_vet_id TEXT DEFAULT '';

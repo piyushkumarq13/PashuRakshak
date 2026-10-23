@@ -7,9 +7,17 @@ import com.pashurakshak.app.data.local.long
 import com.pashurakshak.app.data.local.string
 import tech.turso.libsql.Row
 
-class AlertRepository(private val db: TursoClient) {
+class AlertRepository(
+    private val db: TursoClient,
+    private val pendingSync: PendingSyncRepository,
+) {
 
     suspend fun insert(alert: Alert) {
+        insertRow(alert)
+        pendingSync.enqueueUpsert(PendingSyncRepository.EntityType.ALERT, alert.id)
+    }
+
+    private suspend fun insertRow(alert: Alert) {
         db.execute(
             "INSERT OR IGNORE INTO alerts (id, recipient_role, recipient_id, message, read, created_at) " +
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -53,21 +61,24 @@ class AlertRepository(private val db: TursoClient) {
             alert.createdAt,
             alert.id,
         )
+        pendingSync.enqueueUpsert(PendingSyncRepository.EntityType.ALERT, alert.id)
     }
 
     suspend fun markRead(id: String) {
         db.execute("UPDATE alerts SET read = 1 WHERE id = ?", id)
+        pendingSync.enqueueUpsert(PendingSyncRepository.EntityType.ALERT, id)
     }
 
     suspend fun delete(id: String) {
         db.execute("DELETE FROM alerts WHERE id = ?", id)
+        pendingSync.enqueueDelete(PendingSyncRepository.EntityType.ALERT, id)
     }
 
-    /** Insert-if-missing (remote pull). */
+    /** Insert-if-missing (remote pull) — never enqueue the pulled row for re-upload. */
     suspend fun insertIfAbsent(alert: Alert) {
         val exists = db.query("SELECT id FROM alerts WHERE id = ?", alert.id) { it[0] }.isNotEmpty()
         if (!exists) {
-            runCatching { insert(alert) }
+            runCatching { insertRow(alert) }
         }
     }
 

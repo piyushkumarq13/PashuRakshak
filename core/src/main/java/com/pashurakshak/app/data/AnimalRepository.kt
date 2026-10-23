@@ -6,9 +6,17 @@ import com.pashurakshak.app.data.local.long
 import com.pashurakshak.app.data.local.string
 import tech.turso.libsql.Row
 
-class AnimalRepository(private val db: TursoClient) {
+class AnimalRepository(
+    private val db: TursoClient,
+    private val pendingSync: PendingSyncRepository,
+) {
 
     suspend fun insert(animal: Animal) {
+        insertRow(animal)
+        pendingSync.enqueueUpsert(PendingSyncRepository.EntityType.ANIMAL, animal.id)
+    }
+
+    private suspend fun insertRow(animal: Animal) {
         db.execute(
             "INSERT INTO animals (id, owner_farmer_id, species, name, qr_code_id, created_at) " +
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -41,17 +49,19 @@ class AnimalRepository(private val db: TursoClient) {
             animal.createdAt,
             animal.id,
         )
+        pendingSync.enqueueUpsert(PendingSyncRepository.EntityType.ANIMAL, animal.id)
     }
 
     suspend fun delete(id: String) {
         db.execute("DELETE FROM animals WHERE id = ?", id)
+        pendingSync.enqueueDelete(PendingSyncRepository.EntityType.ANIMAL, id)
     }
 
-    /** Insert-if-missing (remote pull). */
+    /** Insert-if-missing (remote pull) — never enqueue the pulled row for re-upload. */
     suspend fun insertIfAbsent(animal: Animal) {
         val exists = db.query("SELECT id FROM animals WHERE id = ?", animal.id) { it[0] }.isNotEmpty()
         if (!exists) {
-            runCatching { insert(animal) }
+            runCatching { insertRow(animal) }
         }
     }
 

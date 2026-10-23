@@ -20,8 +20,13 @@ const REPORT_STATUSES = [
 
 function str(value) {
   if (value === undefined || value === null) return null;
-  const text = String(value);
-  return text === '' ? null : text;
+  const text = String(value).trim();
+  // Android's JSONObject.optString() serializes a JSON null as the literal
+  // string "null". Never let that poison ids or URLs in the database.
+  if (text === '' || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') {
+    return null;
+  }
+  return text;
 }
 
 function num(value, fallback = null) {
@@ -59,6 +64,8 @@ function jsonish(value, fallback) {
  */
 router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) => {
   const body = req.body ?? {};
+  // Background photo re-pushes already have an advisory; skip the slow Groq call.
+  const skipAi = req.query.skipAi === '1' || req.query.skipAi === 'true' || body.skipAi === true;
 
   // Replays of an offline push with the same Idempotency-Key return the
   // original JSON instead of duplicating the effect.
@@ -221,7 +228,7 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
             photo_local_path = CASE
               WHEN excluded.photo_local_path != '' THEN excluded.photo_local_path
               ELSE pashu_symptom_reports.photo_local_path END,
-            photo_remote_url = COALESCE(excluded.photo_remote_url, pashu_symptom_reports.photo_remote_url),
+            photo_remote_url = COALESCE(excluded.photo_remote_url, NULLIF(pashu_symptom_reports.photo_remote_url, 'null')),
             latitude = excluded.latitude,
             longitude = excluded.longitude,
             risk_score = excluded.risk_score,
@@ -232,14 +239,18 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
              ELSE pashu_symptom_reports.status END,
              synced = excluded.synced,
            created_at = excluded.created_at,
-           village = COALESCE(excluded.village, pashu_symptom_reports.village),
-            assigned_vet_id = CASE WHEN ? THEN excluded.assigned_vet_id ELSE pashu_symptom_reports.assigned_vet_id END,
-            vet_assessment = CASE WHEN ? THEN excluded.vet_assessment ELSE pashu_symptom_reports.vet_assessment END,
-            qr_code_id = COALESCE(excluded.qr_code_id, pashu_symptom_reports.qr_code_id),
-            disease_description = COALESCE(excluded.disease_description, pashu_symptom_reports.disease_description),
+           village = COALESCE(excluded.village, NULLIF(pashu_symptom_reports.village, 'null')),
+            assigned_vet_id = CASE WHEN ?
+              THEN COALESCE(NULLIF(pashu_symptom_reports.assigned_vet_id, 'null'), excluded.assigned_vet_id)
+              ELSE NULLIF(pashu_symptom_reports.assigned_vet_id, 'null') END,
+            vet_assessment = CASE WHEN ?
+              THEN COALESCE(excluded.vet_assessment, NULLIF(pashu_symptom_reports.vet_assessment, 'null'))
+              ELSE NULLIF(pashu_symptom_reports.vet_assessment, 'null') END,
+            qr_code_id = COALESCE(excluded.qr_code_id, NULLIF(pashu_symptom_reports.qr_code_id, 'null')),
+            disease_description = COALESCE(excluded.disease_description, NULLIF(pashu_symptom_reports.disease_description, 'null')),
             resolved_at = CASE WHEN ? THEN excluded.resolved_at ELSE pashu_symptom_reports.resolved_at END,
-            resolved_by = CASE WHEN ? THEN excluded.resolved_by ELSE pashu_symptom_reports.resolved_by END,
-            resolution_note = CASE WHEN ? THEN excluded.resolution_note ELSE pashu_symptom_reports.resolution_note END`,
+            resolved_by = CASE WHEN ? THEN excluded.resolved_by ELSE NULLIF(pashu_symptom_reports.resolved_by, 'null') END,
+            resolution_note = CASE WHEN ? THEN excluded.resolution_note ELSE NULLIF(pashu_symptom_reports.resolution_note, 'null') END`,
        args: [
          id,
          animalId,
@@ -299,30 +310,32 @@ router.post('/', verifySession, requireRole('farmer', 'vet'), async (req, res) =
           req.appId,
         );
 
-        // Look up the farmer's preferred language and generate advisory.
-        const userRow = await db.execute({
-          sql: 'SELECT preferred_language FROM users WHERE id = ?',
-          args: [farmerId],
-        });
-        if (userRow.rows.length > 0) {
-          const preferredLanguage = userRow.rows[0].preferred_language;
-          const reportRow = await db.execute({
-            sql: 'SELECT ai_risk_category, symptoms, village, risk_score, risk_breakdown, assigned_vet_id, vet_assessment FROM pashu_symptom_reports WHERE id = ?',
-            args: [id],
+        if (!skipAi) {
+          // Look up the farmer's preferred language and generate advisory.
+          const userRow = await db.execute({
+            sql: 'SELECT preferred_language FROM users WHERE id = ?',
+            args: [farmerId],
           });
-          aiAdvisory = await generateAdvisory(
-            {
-              id,
-              species: animalRow.rows[0]?.species,
-              symptoms: reportRow.rows[0]?.symptoms,
-              riskScore: reportRow.rows[0]?.risk_score,
-              riskBreakdown: reportRow.rows[0]?.risk_breakdown,
-              village: reportRow.rows[0]?.village,
-              ai_risk_category: reportRow.rows[0]?.ai_risk_category,
-              farmerId,
-            },
-            preferredLanguage,
-          );
+          if (userRow.rows.length > 0) {
+            const preferredLanguage = userRow.rows[0].preferred_language;
+            const reportRow = await db.execute({
+              sql: 'SELECT ai_risk_category, symptoms, village, risk_score, risk_breakdown, assigned_vet_id, vet_assessment FROM pashu_symptom_reports WHERE id = ?',
+              args: [id],
+            });
+            aiAdvisory = await generateAdvisory(
+              {
+                id,
+                species: animalRow.rows[0]?.species,
+                symptoms: reportRow.rows[0]?.symptoms,
+                riskScore: reportRow.rows[0]?.risk_score,
+                riskBreakdown: reportRow.rows[0]?.risk_breakdown,
+                village: reportRow.rows[0]?.village,
+                ai_risk_category: reportRow.rows[0]?.ai_risk_category,
+                farmerId,
+              },
+              preferredLanguage,
+            );
+          }
         }
       } catch (error) {
         console.error('[pashu-health/reports] cluster detection failed:', error);

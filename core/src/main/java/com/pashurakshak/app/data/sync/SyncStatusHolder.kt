@@ -20,10 +20,11 @@ object SyncStatusHolder {
     private val _status = MutableStateFlow(SyncUiStatus())
     val status: StateFlow<SyncUiStatus> = _status.asStateFlow()
 
-    /** Re-read the pending count from the local queue (safe to call from UI). */
+    /** Re-read the pending count from the local queues (safe to call from UI). */
     suspend fun refreshPendingCount() {
         val count = runCatching {
-            ServiceLocator.reportRepository.getUnsyncedReports().size
+            ServiceLocator.reportRepository.countUnsyncedReports() +
+                ServiceLocator.pendingSyncRepository.count()
         }.getOrDefault(_status.value.pendingCount)
         _status.update { it.copy(pendingCount = count) }
     }

@@ -65,7 +65,7 @@ class VetCaseQueueViewModel(
             }
 
             launch {
-                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll(force = true) }
                 runCatching { loadQueue() }.onSuccess { items ->
                     _uiState.update { it.copy(isLoading = false, items = items) }
                 }

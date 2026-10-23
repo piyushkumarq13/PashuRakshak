@@ -3,6 +3,7 @@ package com.pashurakshak.app.data.remote
 import android.util.Log
 import com.pashurakshak.app.BuildConfig
 import com.pashurakshak.app.data.SessionManager
+import com.pashurakshak.app.data.cleanRemoteString
 import com.pashurakshak.app.data.local.SymptomReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,11 +29,11 @@ class ReportPushApi(
         data class Failure(val message: String) : PushResult()
     }
 
-    suspend fun pushReport(report: SymptomReport): PushResult =
+    suspend fun pushReport(report: SymptomReport, skipAi: Boolean = false): PushResult =
         withContext(Dispatchers.IO) {
             try {
                 val payload = buildPayload(report)
-                val response = executePush(payload)
+                val response = executePush(payload, skipAi)
                 val aiAdvisory = response.optString("aiAdvisory").takeIf { it.isNotBlank() }
                 PushResult.Success(aiAdvisory)
             } catch (error: Exception) {
@@ -42,12 +43,13 @@ class ReportPushApi(
         }
 
     /** Blocking — must only be called from Dispatchers.IO. Returns the response JSON. */
-    private fun executePush(payload: JSONObject): JSONObject {
+    private fun executePush(payload: JSONObject, skipAi: Boolean): JSONObject {
         val sessionToken = currentSessionToken()
-        val connection = open("$baseUrl/api/v1/pashu-health/reports", "POST")
+        val query = if (skipAi) "?skipAi=1" else ""
+        val connection = open("$baseUrl/api/v1/pashu-health/reports$query", "POST")
         connection.setRequestProperty("Content-Type", "application/json")
         connection.setRequestProperty("X-App-Key", BuildConfig.APP_API_KEY)
-        connection.setRequestProperty("Idempotency-Key", idempotencyKey(payload))
+        connection.setRequestProperty("Idempotency-Key", idempotencyKey(payload, skipAi))
         connection.setRequestProperty("Authorization", "Bearer $sessionToken")
         connection.doOutput = true
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
@@ -63,8 +65,8 @@ class ReportPushApi(
      * Keying only by report id would replay the stale cached response, so bind
      * the key to the exact payload while keeping retries of the same payload stable.
      */
-    private fun idempotencyKey(payload: JSONObject): String {
-        val body = payload.toString()
+    private fun idempotencyKey(payload: JSONObject, skipAi: Boolean): String {
+        val body = payload.toString() + if (skipAi) ":skipAi" else ""
         val hash = MessageDigest.getInstance("SHA-256")
             .digest(body.toByteArray(Charsets.UTF_8))
             .take(12)
@@ -78,23 +80,27 @@ class ReportPushApi(
             put("animal_id", report.animalId)
             put("farmer_id", report.farmerId)
             put("symptoms", org.json.JSONArray(report.symptoms))
-            put("photo_local_path", report.photoLocalPath)
-            put("photo_remote_url", report.photoRemoteUrl ?: JSONObject.NULL)
+            put("photo_local_path", cleanRemoteString(report.photoLocalPath).orEmpty())
+            putNullable("photo_remote_url", report.photoRemoteUrl)
             put("latitude", report.latitude)
             put("longitude", report.longitude)
-            put("village", report.village ?: JSONObject.NULL)
-            put("assigned_vet_id", report.assignedVetId ?: JSONObject.NULL)
-            put("vet_assessment", report.vetAssessment ?: JSONObject.NULL)
+            putNullable("village", report.village)
+            putNullable("assigned_vet_id", report.assignedVetId)
+            putNullable("vet_assessment", report.vetAssessment)
             put("risk_score", report.riskScore)
             put("risk_breakdown", JSONObject(report.riskBreakdown).toString())
             put("status", report.status.dbValue)
             put("created_at", report.createdAt)
-            put("qr_code_id", report.qrCodeId)
-            put("disease_description", report.diseaseDescription ?: JSONObject.NULL)
+            putNullable("qr_code_id", report.qrCodeId)
+            putNullable("disease_description", report.diseaseDescription)
             put("resolved_at", report.resolvedAt ?: JSONObject.NULL)
-            put("resolved_by", report.resolvedBy ?: JSONObject.NULL)
-            put("resolution_note", report.resolutionNote ?: JSONObject.NULL)
+            putNullable("resolved_by", report.resolvedBy)
+            putNullable("resolution_note", report.resolutionNote)
         }
+
+    private fun JSONObject.putNullable(key: String, value: String?) {
+        put(key, cleanRemoteString(value) ?: JSONObject.NULL)
+    }
 
     private fun open(rawUrl: String, method: String): HttpURLConnection {
         val connection = URL(rawUrl).openConnection() as HttpURLConnection

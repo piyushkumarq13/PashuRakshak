@@ -342,6 +342,9 @@ class ReportSickAnimalViewModel(
                 when (pushResult) {
                     is ReportPushApi.PushResult.Success -> {
                         val aiAdvisory = pushResult.aiAdvisory
+                        reportRepository.update(
+                            report.copy(synced = true, aiAdvisory = aiAdvisory),
+                        )
                         _uiState.update { it.copy(isSubmitting = false, submitted = true, aiAdvisory = aiAdvisory, lastReportId = reportId, lastQrCodeId = report.qrCodeId) }
                     }
                     is ReportPushApi.PushResult.Failure -> {

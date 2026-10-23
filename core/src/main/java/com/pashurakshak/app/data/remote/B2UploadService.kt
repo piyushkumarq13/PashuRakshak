@@ -52,6 +52,13 @@ class B2UploadService(
 
     private data class UploadTarget(val url: String, val token: String)
 
+    /** Cached B2 account authorization so repeated photo uploads skip that round trip. */
+    private var cachedAuth: Auth? = null
+    private var cachedAuthExpiryMs: Long = 0L
+    private var cachedBucketId: String? = null
+    private var cachedUploadTarget: UploadTarget? = null
+    private var cachedUploadTargetExpiryMs: Long = 0L
+
     /** Cached download-authorization token for private-bucket image display. */
     private var cachedDownloadToken: String? = null
     private var cachedDownloadTokenExpiryMs: Long = 0
@@ -59,6 +66,11 @@ class B2UploadService(
 
     /** Clears cached B2 authorization after logout / account switch. */
     fun clearCachedAuth() {
+        cachedAuth = null
+        cachedAuthExpiryMs = 0L
+        cachedBucketId = null
+        cachedUploadTarget = null
+        cachedUploadTargetExpiryMs = 0L
         cachedDownloadToken = null
         cachedDownloadTokenExpiryMs = 0L
         downloadBaseUrl = null
@@ -248,6 +260,8 @@ class B2UploadService(
 
     /** Performs b2_authorize_account and returns apiUrl, downloadUrl, accountId, token. */
     private fun authorize(): Auth {
+        val now = System.currentTimeMillis()
+        cachedAuth?.let { if (cacheIsFresh(cachedAuthExpiryMs, now)) return it }
         val connection = open(
             "https://api.backblazeb2.com/b2api/v2/b2_authorize_account",
             "GET",
@@ -263,10 +277,17 @@ class B2UploadService(
             downloadUrl = json.getString("downloadUrl"),
             accountId = json.getString("accountId"),
             token = json.getString("authorizationToken"),
-        )
+        ).also {
+            cachedAuth = it
+            cachedAuthExpiryMs = now + AUTH_CACHE_DURATION_MS
+        }
     }
 
     private fun getUploadUrl(auth: Auth): UploadTarget {
+        val now = System.currentTimeMillis()
+        cachedUploadTarget?.let {
+            if (cacheIsFresh(cachedUploadTargetExpiryMs, now)) return it
+        }
         val bucketId = resolveBucketId(auth)
         val connection = open("${auth.apiUrl}/b2api/v2/b2_get_upload_url", "POST")
         connection.setRequestProperty("Authorization", auth.token)
@@ -275,10 +296,15 @@ class B2UploadService(
         connection.outputStream.use { it.write(JSONObject().put("bucketId", bucketId).toString().toByteArray()) }
         val json = readJson(connection)
         return UploadTarget(json.getString("uploadUrl"), json.getString("authorizationToken"))
+            .also {
+                cachedUploadTarget = it
+                cachedUploadTargetExpiryMs = now + UPLOAD_TARGET_CACHE_DURATION_MS
+            }
     }
 
     /** B2 list_buckets requires accountId as a query parameter. */
     private fun resolveBucketId(auth: Auth): String {
+        cachedBucketId?.let { return it }
         val connection = open("${auth.apiUrl}/b2api/v2/b2_list_buckets?accountId=${auth.accountId}", "GET")
         connection.setRequestProperty("Authorization", auth.token)
         val json = readJson(connection)
@@ -286,7 +312,7 @@ class B2UploadService(
         for (i in 0 until buckets.length()) {
             val bucket = buckets.getJSONObject(i)
             if (bucket.getString("bucketName") == bucketName) {
-                return bucket.getString("bucketId")
+                return bucket.getString("bucketId").also { cachedBucketId = it }
             }
         }
         error("Bucket '$bucketName' not found for this application key")
@@ -385,8 +411,14 @@ class B2UploadService(
         companion object {
         const val MAX_ATTEMPTS = 3
         const val RETRY_BASE_DELAY_MS = 1_000L
+        private const val AUTH_CACHE_DURATION_MS = 60 * 60 * 1000L // 1 hour
+        private const val UPLOAD_TARGET_CACHE_DURATION_MS = 60 * 60 * 1000L // 1 hour
         private const val TOKEN_CACHE_DURATION_MS = 12 * 60 * 60 * 1000L // 12 hours
         private const val MAX_FILE_BYTES = 20L * 1024 * 1024
+
+        /** True while a cached value's expiry has not passed (also handles no cache). */
+        @JvmStatic
+        fun cacheIsFresh(expiresAtMs: Long, nowMs: Long): Boolean = expiresAtMs > nowMs
 
         /** Percent-encode each path segment; letters/digits and -._~ are kept as-is. */
         @JvmStatic

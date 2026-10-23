@@ -59,7 +59,12 @@ class AlertsViewModel(
     fun onAlertClicked(alert: Alert) {
         if (alert.read) return
         viewModelScope.launch {
-            runCatching { alertRepository.markRead(alert.id) }
+            runCatching {
+                alertRepository.markRead(alert.id)
+                runCatching {
+                    com.pashurakshak.app.data.sync.RemoteSync.pushAlert(alert.copy(read = true))
+                }
+            }
                 .onSuccess { refresh() }
                 .onFailure { error ->
                     _uiState.update { it.copy(error = error.message ?: "Failed to mark alert read") }

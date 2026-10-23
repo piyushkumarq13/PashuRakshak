@@ -52,6 +52,13 @@ class B2UploadServiceTest {
     }
 
     @Test
+    fun cacheIsFreshOnlyBeforeExpiry() {
+        assertTrue(B2UploadService.cacheIsFresh(expiresAtMs = 2_000L, nowMs = 1_000L))
+        assertFalse(B2UploadService.cacheIsFresh(expiresAtMs = 1_000L, nowMs = 1_000L))
+        assertFalse(B2UploadService.cacheIsFresh(expiresAtMs = 0L, nowMs = 1_000L))
+    }
+
+    @Test
     fun buildFileUrlConstructsFullDownloadPath() {
         val url = "https://f005.backblazeb2.com"
         val bucket = "pashurakshak-reports"

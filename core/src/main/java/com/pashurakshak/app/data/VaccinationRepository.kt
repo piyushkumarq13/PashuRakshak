@@ -6,9 +6,20 @@ import com.pashurakshak.app.data.local.long
 import com.pashurakshak.app.data.local.string
 import tech.turso.libsql.Row
 
-class VaccinationRepository(private val db: TursoClient) {
+class VaccinationRepository(
+    private val db: TursoClient,
+    private val pendingSync: PendingSyncRepository,
+) {
 
     suspend fun insert(vaccination: Vaccination) {
+        insertRow(vaccination)
+        pendingSync.enqueueUpsert(
+            PendingSyncRepository.EntityType.VACCINATION,
+            vaccination.id,
+        )
+    }
+
+    private suspend fun insertRow(vaccination: Vaccination) {
         db.execute(
             "INSERT INTO vaccinations (id, animal_id, vaccine_name, date_given, next_due) " +
                 "VALUES (?, ?, ?, ?, ?)",
@@ -42,17 +53,22 @@ class VaccinationRepository(private val db: TursoClient) {
             vaccination.nextDue,
             vaccination.id,
         )
+        pendingSync.enqueueUpsert(
+            PendingSyncRepository.EntityType.VACCINATION,
+            vaccination.id,
+        )
     }
 
     suspend fun delete(id: String) {
         db.execute("DELETE FROM vaccinations WHERE id = ?", id)
+        pendingSync.enqueueDelete(PendingSyncRepository.EntityType.VACCINATION, id)
     }
 
-    /** Insert-if-missing (remote pull). */
+    /** Insert-if-missing (remote pull) — never enqueue the pulled row for re-upload. */
     suspend fun insertIfAbsent(vaccination: Vaccination) {
         val exists = db.query("SELECT id FROM vaccinations WHERE id = ?", vaccination.id) { it[0] }.isNotEmpty()
         if (!exists) {
-            runCatching { insert(vaccination) }
+            runCatching { insertRow(vaccination) }
         }
     }
 

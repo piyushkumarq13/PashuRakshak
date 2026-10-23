@@ -78,6 +78,10 @@ class ReportRepository(private val db: TursoClient) {
             "SELECT * FROM symptom_reports WHERE synced = 0 ORDER BY created_at ASC",
         ) { it.toReport() }
 
+    suspend fun countUnsyncedReports(): Int =
+        db.query("SELECT COUNT(*) FROM symptom_reports WHERE synced = 0") { it.int(0) }
+            .firstOrNull() ?: 0
+
     /**
      * Reports with a local photo but no remote URL yet —
      * the B2 photo-upload queue (feeds into the sync flow).
@@ -219,7 +223,7 @@ class ReportRepository(private val db: TursoClient) {
         farmerId = string(2),
         symptoms = jsonToSymptoms(string(3)),
         photoLocalPath = string(4),
-        photoRemoteUrl = stringOrNull(5),
+        photoRemoteUrl = cleanRemoteString(stringOrNull(5)),
         latitude = double(6),
         longitude = double(7),
         riskScore = int(8),
@@ -227,18 +231,18 @@ class ReportRepository(private val db: TursoClient) {
         status = ReportStatus.fromDbValue(string(10)),
         synced = boolean(11),
         createdAt = long(12),
-        assignedVetId = stringOrNull(13),
-        aiAdvisory = stringOrNull(14),
-        vetAssessment = stringOrNull(15),
-        village = stringOrNull(16),
-        qrCodeId = stringOrNull(17).orEmpty(),
-        diseaseDescription = stringOrNull(18)?.takeIf { it.isNotBlank() },
+        assignedVetId = cleanRemoteString(stringOrNull(13)),
+        aiAdvisory = cleanRemoteString(stringOrNull(14)),
+        vetAssessment = cleanRemoteString(stringOrNull(15)),
+        village = cleanRemoteString(stringOrNull(16)),
+        qrCodeId = cleanRemoteString(stringOrNull(17)).orEmpty(),
+        diseaseDescription = cleanRemoteString(stringOrNull(18)),
         qrVerified = int(19) != 0,
         verifiedAt = (this[20] as? Number)?.toLong(),
-        verifiedBy = stringOrNull(21),
+        verifiedBy = cleanRemoteString(stringOrNull(21)),
         resolvedAt = (this[22] as? Number)?.toLong(),
-        resolvedBy = stringOrNull(23),
-        resolutionNote = stringOrNull(24)?.takeIf { it.isNotBlank() },
+        resolvedBy = cleanRemoteString(stringOrNull(23)),
+        resolutionNote = cleanRemoteString(stringOrNull(24)),
     )
 
     private fun symptomsToJson(symptoms: List<String>): String =

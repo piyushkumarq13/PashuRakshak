@@ -38,7 +38,7 @@ fun SyncStatusBanner(
     val label = when {
         status.isSyncing -> "Syncing…"
         status.pendingCount > 0 ->
-            "${status.pendingCount} report${if (status.pendingCount == 1) "" else "s"} pending sync"
+            "${status.pendingCount} change${if (status.pendingCount == 1) "" else "s"} pending sync"
         else -> return
     }
     val containerColor = if (status.isSyncing) {

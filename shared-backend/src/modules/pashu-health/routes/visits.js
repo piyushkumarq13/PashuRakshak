@@ -12,8 +12,11 @@ const router = Router();
 
 function str(value) {
   if (value === undefined || value === null) return null;
-  const text = String(value);
-  return text === '' ? null : text;
+  const text = String(value).trim();
+  if (text === '' || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') {
+    return null;
+  }
+  return text;
 }
 
 function num(value, fallback = null) {
@@ -86,7 +89,7 @@ router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, re
     }
 
     const reportRow = reportResult.rows[0];
-    const assignedVetId = reportRow.assigned_vet_id;
+    const assignedVetId = str(reportRow.assigned_vet_id);
 
     // Reject 403 if vet doesn't match assigned_vet_id and assigned_vet_id is not null
     if (assignedVetId !== null && assignedVetId !== vetUserId) {
@@ -99,7 +102,7 @@ router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, re
     // Verify the scanned QR's HMAC signature first (proof the payload wasn't
     // guessed or forged), then compare its embedded id to this report's QR.
     // Fallback to the animal's QR only for legacy rows.
-    const expectedQrCodeId = reportRow.report_qr_code_id || reportRow.animal_qr_code_id;
+    const expectedQrCodeId = str(reportRow.report_qr_code_id) || str(reportRow.animal_qr_code_id);
     const signedId = verifyAndExtractId(scannedQrCodeId ?? '', req.appApiKey);
     const matched = signedId && expectedQrCodeId && signedId === expectedQrCodeId ? 1 : 0;
 
@@ -153,10 +156,11 @@ router.post('/', verifyAppKey, verifySession, requireRole('vet'), async (req, re
     await db.execute({
       sql: `UPDATE pashu_symptom_reports
         SET vet_assessment = ?, status = 'resolved', qr_verified = 1,
+            assigned_vet_id = COALESCE(NULLIF(assigned_vet_id, 'null'), ?),
             verified_at = ?, verified_by = ?, resolved_at = ?,
             resolved_by = ?, resolution_note = ?
         WHERE id = ?`,
-      args: [assessment, now, vetUserId, now, vetUserId, resolutionNote, reportId],
+      args: [assessment, vetUserId, now, vetUserId, now, vetUserId, resolutionNote, reportId],
     });
 
     await appendAuditLog(db, {

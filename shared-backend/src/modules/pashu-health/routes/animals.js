@@ -7,8 +7,11 @@ const router = Router();
 
 function str(value) {
   if (value === undefined || value === null) return null;
-  const text = String(value);
-  return text === '' ? null : text;
+  const text = String(value).trim();
+  if (text === '' || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') {
+    return null;
+  }
+  return text;
 }
 
 function num(value, fallback = null) {

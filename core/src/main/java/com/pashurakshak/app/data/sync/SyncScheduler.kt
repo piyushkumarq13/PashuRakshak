@@ -45,8 +45,10 @@ object SyncScheduler {
     }
 
     /**
-     * Trigger a sync soon. Constrained to CONNECTED (runs when online, waits otherwise)
-     * and KEEP so repeated reconnect callbacks never stack duplicate runs.
+     * Trigger a sync soon. Constrained to CONNECTED (runs when online, waits otherwise).
+     * APPEND_OR_REPLACE guarantees a request made while another sync is running is
+     * not silently dropped (KEEP used to lose vet status changes until the next
+     * 15-minute periodic run).
      */
     fun triggerNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<SyncWorker>()
@@ -54,7 +56,7 @@ object SyncScheduler {
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
     }

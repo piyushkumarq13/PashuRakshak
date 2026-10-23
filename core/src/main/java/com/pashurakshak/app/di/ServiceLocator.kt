@@ -5,6 +5,7 @@ import com.pashurakshak.app.data.AlertRepository
 import com.pashurakshak.app.data.AnimalRepository
 import com.pashurakshak.app.data.AuthRepository
 import com.pashurakshak.app.data.FarmerRepository
+import com.pashurakshak.app.data.PendingSyncRepository
 import com.pashurakshak.app.data.ReportRepository
 import com.pashurakshak.app.data.VaccinationRepository
 import com.pashurakshak.app.data.VetRepository
@@ -33,12 +34,19 @@ object ServiceLocator {
     val context: Context
         get() = appContext
 
-    val animalRepository: AnimalRepository by lazy { AnimalRepository(database) }
+    val pendingSyncRepository: PendingSyncRepository by lazy { PendingSyncRepository(database) }
+    val animalRepository: AnimalRepository by lazy {
+        AnimalRepository(database, pendingSyncRepository)
+    }
     val farmerRepository: FarmerRepository by lazy { FarmerRepository() }
     val reportRepository: ReportRepository by lazy { ReportRepository(database) }
-    val vaccinationRepository: VaccinationRepository by lazy { VaccinationRepository(database) }
+    val vaccinationRepository: VaccinationRepository by lazy {
+        VaccinationRepository(database, pendingSyncRepository)
+    }
     val vetRepository: VetRepository by lazy { VetRepository(database) }
-    val alertRepository: AlertRepository by lazy { AlertRepository(database) }
+    val alertRepository: AlertRepository by lazy {
+        AlertRepository(database, pendingSyncRepository)
+    }
     val b2UploadService: B2UploadService by lazy { B2UploadService(reportRepository) }
     val reportPushApi: ReportPushApi by lazy { ReportPushApi() }
     val aiRiskApi: AiRiskApi by lazy { AiRiskApi() }

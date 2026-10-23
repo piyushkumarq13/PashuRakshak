@@ -100,7 +100,7 @@ class CaseDetailViewModel(
             }
 
             launch {
-                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll() }
+                runCatching { com.pashurakshak.app.data.sync.RemoteSync.pullAll(force = true) }
                 runCatching { loadLocal() }.onSuccess { (report, animal) ->
                     _uiState.update {
                         it.copy(isLoading = false, report = report, animal = animal)

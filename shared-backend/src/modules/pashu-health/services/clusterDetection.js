@@ -153,6 +153,15 @@ export async function categorizeAndAssign(report, appId) {
       args: [category, report.id],
     });
 
+    // Re-pushes (for example after a photo upload) must not assign the same vet
+    // again or create a duplicate notification.
+    const current = await db.execute({
+      sql: 'SELECT assigned_vet_id FROM pashu_symptom_reports WHERE id = ?',
+      args: [report.id],
+    });
+    const existingVetId = current.rows[0]?.assigned_vet_id;
+    if (existingVetId && existingVetId !== 'null' && existingVetId !== 'undefined') return;
+
     if (!village) {
       console.warn(`[categorizeAndAssign] No village for report ${report.id}; assigned_vet_id left null`);
       return;
