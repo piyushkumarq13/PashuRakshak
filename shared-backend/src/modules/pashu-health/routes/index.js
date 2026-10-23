@@ -8,6 +8,7 @@ import farmerProfiles from './farmerProfiles.js';
 import govAlerts from './govAlerts.js';
 import reports from './reports.js';
 import vaccinations from './vaccinations.js';
+import vetAiChatSessions from './vetAiChatSessions.js';
 import vetApplications from './vetApplications.js';
 import vetProfiles from './vetProfiles.js';
 import vetsAvailable from './vetsAvailable.js';
@@ -26,6 +27,7 @@ router.use('/vet-applications', vetApplications);
 router.use('/vets', vetsAvailable);
 router.use('/reports', aiChat);
 router.use('/ai-chats', aiChatSessions);
+router.use('/vet-ai-chats', vetAiChatSessions);
 router.use('/visits', visits);
 router.use('/gov-alerts', govAlerts);
 

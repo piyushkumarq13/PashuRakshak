@@ -122,6 +122,89 @@ export async function generateStandaloneChatReply(history, farmerPreferredLangua
   }
 }
 
+const VET_SYSTEM_PROMPT = `You are a veterinary clinical decision-support assistant inside PashuRakshak, speaking with a licensed veterinarian.
+
+Guidelines:
+- Use professional veterinary terminology and reason from the case details provided.
+- You may discuss differential diagnoses, diagnostic tests, treatment options, drug classes, supportive care, isolation, and herd-level precautions.
+- Clearly separate confirmed findings from possibilities. Never invent history, laboratory results, or examination findings that are not present.
+- Ask for missing clinical information when it matters.
+- When discussing medicines, include conservative guidance and explicitly require the vet to confirm the dose against a current formulary, the animal's weight, contraindications, and local withdrawal-period regulations.
+- Flag zoonotic, notifiable, or emergency conditions and recommend containment or official reporting when relevant.
+- Do not claim to replace clinical judgment. End every response with: "Clinical judgment and local regulations take precedence."`;
+
+function displayValue(value, fallback = 'not recorded') {
+  if (value === undefined || value === null) return fallback;
+  const text = String(value).trim();
+  return text === '' ? fallback : text;
+}
+
+function displayTimestamp(value) {
+  const millis = Number(value);
+  if (!Number.isFinite(millis) || millis <= 0) return 'not recorded';
+  return new Date(millis).toISOString();
+}
+
+/** Formats the report + animal row as a compact, stable case briefing for the AI. */
+export function formatVetCaseContext(report) {
+  if (!report) return null;
+  const animal = displayValue(report.animal_name, 'unnamed animal');
+  const species = displayValue(report.animal_species, 'unknown species');
+  const qrVerified = report.qr_verified === 1 || report.qr_verified === true;
+  const lines = [
+    `Case ID: ${displayValue(report.id)}`,
+    `Animal: ${animal} (${species})`,
+    `Village: ${displayValue(report.village, 'not recorded')}`,
+    `Reported at: ${displayTimestamp(report.created_at)}`,
+    `Current status: ${displayValue(report.status)}`,
+    `Symptoms: ${displayValue(report.symptoms)}`,
+    `Disease description: ${displayValue(report.disease_description)}`,
+    `Risk score: ${displayValue(report.risk_score)}`,
+    `Risk category: ${displayValue(report.ai_risk_category)}`,
+    `Risk breakdown: ${displayValue(report.risk_breakdown)}`,
+    `Reported location: ${displayValue(report.latitude)}, ${displayValue(report.longitude)}`,
+    `QR verified: ${qrVerified ? 'yes' : 'no'}`,
+    `Vet assessment: ${displayValue(report.vet_assessment)}`,
+    `Resolution note: ${displayValue(report.resolution_note)}`,
+    `Resolved at: ${displayTimestamp(report.resolved_at)}`,
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * Vet chat replies. A case-scoped conversation gets a fresh case briefing on
+ * every turn, followed by the recent conversation context.
+ */
+export async function generateVetChatReply(
+  history,
+  { preferredLanguage = 'en', reportContext = null } = {},
+) {
+  const language = preferredLanguage === 'hi' ? 'Hindi' : 'English';
+  const cappedContext = (Array.isArray(history) ? history : []).slice(-20);
+  const systemContent = reportContext
+    ? `${VET_SYSTEM_PROMPT}\n\nCASE CONTEXT\n${reportContext}\n\nRespond in ${language}.`
+    : `${VET_SYSTEM_PROMPT}\n\nRespond in ${language}.`;
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: systemContent },
+        ...cappedContext,
+      ],
+      temperature: 0.4,
+      max_tokens: MAX_COMPLETION_TOKENS,
+      reasoning_effort: REASONING_EFFORT,
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? '';
+    return reply.trim() ? reply : UNAVAILABLE_REPLY;
+  } catch (error) {
+    console.error('[aiAdvisory] vet chat Groq call failed:', error?.message ?? error);
+    return UNAVAILABLE_REPLY;
+  }
+}
+
 export async function continueConversation(reportId, farmerId, userMessage, farmerPreferredLanguage) {
   const language = farmerPreferredLanguage === 'hi' ? 'Hindi' : 'English';
   const now = Date.now();

@@ -55,6 +55,25 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
+fun VetAiChatScreen(
+    reportId: String?,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val vetViewModel: AiChatViewModel = viewModel(key = "vet-ai-chat-${reportId.orEmpty()}") {
+        AiChatViewModel(
+            audience = AiChatAudience.VET,
+            initialReportId = reportId,
+        )
+    }
+    AiChatScreen(
+        onBack = onBack,
+        modifier = modifier,
+        viewModel = vetViewModel,
+    )
+}
+
+@Composable
 fun AiChatScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -62,6 +81,19 @@ fun AiChatScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val errorMessage = state.error
+    val isVet = state.audience == AiChatAudience.VET
+    val headerTitle = if (isVet) "Vet AI Assistant" else "AI Health Assistant"
+    val headerSubtitle = when {
+        !isVet -> "PashuRakshak AI"
+        !state.activeReportLabel.isNullOrBlank() -> "Case: ${state.activeReportLabel}"
+        !state.activeReportId.isNullOrBlank() -> "Case-specific consultation"
+        else -> "Clinical decision support"
+    }
+    val inputPlaceholder = when {
+        !isVet -> "Ask about your animal's health..."
+        !state.activeReportId.isNullOrBlank() -> "Ask about this case..."
+        else -> "Ask a veterinary question..."
+    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -117,6 +149,8 @@ fun AiChatScreen(
             topBar = {
                 ChatTopBar(
                     onBack = onBack,
+                    title = headerTitle,
+                    subtitle = headerSubtitle,
                     actions = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(
@@ -151,7 +185,19 @@ fun AiChatScreen(
                     } else if (state.messages.isEmpty()) {
                         item(key = "empty") {
                             if (errorMessage == null) {
-                                EmptyChatState()
+                                EmptyChatState(
+                                    title = when {
+                                        !isVet -> "Ask me anything"
+                                        !state.activeReportId.isNullOrBlank() -> "Ask about this case"
+                                        else -> "Ask a clinical question"
+                                    },
+                                    message = when {
+                                        !isVet -> "Get preventive care and first-aid guidance for your animals."
+                                        !state.activeReportId.isNullOrBlank() ->
+                                            "Use this case's details for differentials, diagnostics, and next steps."
+                                        else -> "Get veterinary decision support for any case or clinical question."
+                                    },
+                                )
                             } else {
                                 ChatErrorState(errorMessage)
                             }
@@ -176,6 +222,7 @@ fun AiChatScreen(
                     onInputChanged = viewModel::onInputChanged,
                     onSend = viewModel::sendMessage,
                     isSending = state.isSending || state.isTyping || state.isLoadingConversation,
+                    placeholder = inputPlaceholder,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -197,13 +244,17 @@ private fun ChatHistoryDrawer(
         Column(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(
-                    text = "AI Chats",
+                    text = if (state.audience == AiChatAudience.VET) "Vet AI Chats" else "AI Chats",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Your saved conversations",
+                    text = if (state.audience == AiChatAudience.VET) {
+                        "Your saved consults and case chats"
+                    } else {
+                        "Your saved conversations"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -293,6 +344,15 @@ private fun ChatHistoryDrawer(
                             NavigationDrawerItem(
                                 label = {
                                     Column {
+                                        if (!session.reportLabel.isNullOrBlank()) {
+                                            Text(
+                                                text = "CASE · ${session.reportLabel}",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
                                         Text(
                                             text = session.title,
                                             maxLines = 1,

@@ -17,6 +17,14 @@ sealed class Screen(val route: String) {
     data object VaccinationStatus : Screen("vaccination_status")
     data object Alerts : Screen("alerts")
     data object VetCaseQueue : Screen("vet_case_queue")
+    data object VetAiChat : Screen("vet_ai_chat?reportId={reportId}") {
+        const val BASE_ROUTE = "vet_ai_chat"
+        const val ARG_REPORT_ID = "reportId"
+
+        fun withReportId(reportId: String? = null): String =
+            if (reportId.isNullOrBlank()) BASE_ROUTE
+            else "$BASE_ROUTE?reportId=${Uri.encode(reportId)}"
+    }
     data object VetAlerts : Screen("vet_alerts")
     data object MyReports : Screen("my_reports")
 

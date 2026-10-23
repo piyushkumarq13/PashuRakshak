@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -48,6 +49,12 @@ fun VetBottomBar(navController: NavHostController) {
                 onClick = { navController.navigateToVetTab("${Screen.VetCaseQueue.route}?filter=ongoing") },
                 icon = Icons.AutoMirrored.Filled.Assignment,
                 label = "Cases",
+            )
+            BottomBarTab(
+                selected = currentRoute?.substringBefore('?') == Screen.VetAiChat.BASE_ROUTE,
+                onClick = { navController.navigateToVetTab(Screen.VetAiChat.withReportId()) },
+                icon = Icons.Default.SmartToy,
+                label = "Chat",
             )
             BottomBarTab(
                 selected = currentRoute == Screen.VetAlerts.route,

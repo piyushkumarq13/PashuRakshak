@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +56,7 @@ import com.pashurakshak.app.ui.theme.AppColors
 fun VetCaseQueueScreen(
     onReportClick: (reportId: String) -> Unit,
     onQrScanClick: (reportId: String) -> Unit,
+    onAiChatClick: (reportId: String) -> Unit,
     modifier: Modifier = Modifier,
     filter: VetCaseQueueViewModel.QueueFilter = VetCaseQueueViewModel.QueueFilter.ONGOING,
     viewModel: VetCaseQueueViewModel = viewModel(key = filter.name) {
@@ -153,6 +156,7 @@ fun VetCaseQueueScreen(
                                     item = item,
                                     onClick = { onReportClick(item.report.id) },
                                     onQrScanClick = { onQrScanClick(item.report.id) },
+                                    onAiChatClick = { onAiChatClick(item.report.id) },
                                     onMarkExamined = { viewModel.markAsExamined(item.report.id) },
                                     showActions = filter == VetCaseQueueViewModel.QueueFilter.ONGOING ||
                                         filter == VetCaseQueueViewModel.QueueFilter.HIGH_RISK,
@@ -171,6 +175,7 @@ private fun QueueCard(
     item: QueueItem,
     onClick: () -> Unit,
     onQrScanClick: () -> Unit,
+    onAiChatClick: () -> Unit,
     onMarkExamined: () -> Unit,
     showActions: Boolean = true,
 ) {
@@ -299,40 +304,57 @@ private fun QueueCard(
                     }
                 }
 
-                if (showActions) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = AppSpacing.XS),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    OutlinedButton(
-                        onClick = onQrScanClick,
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.small,
-                    ) {
+                    TextButton(onClick = onAiChatClick) {
                         Icon(
-                            imageVector = Icons.Default.QrCodeScanner,
+                            imageVector = Icons.Default.SmartToy,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "Scan QR", style = MaterialTheme.typography.labelLarge)
-                    }
-                    Button(
-                        onClick = onMarkExamined,
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "Examined", style = MaterialTheme.typography.labelLarge)
+                        Text(text = "Ask AI about this case")
                     }
                 }
+
+                if (showActions) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = AppSpacing.XS),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.SM),
+                    ) {
+                        OutlinedButton(
+                            onClick = onQrScanClick,
+                            modifier = Modifier.weight(1f),
+                            shape = MaterialTheme.shapes.small,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "Scan QR", style = MaterialTheme.typography.labelLarge)
+                        }
+                        Button(
+                            onClick = onMarkExamined,
+                            modifier = Modifier.weight(1f),
+                            shape = MaterialTheme.shapes.small,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "Examined", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                 }
             }
         }

@@ -29,6 +29,7 @@ import com.pashurakshak.app.ui.OnboardingScreen
 import com.pashurakshak.app.ui.VetHomeScreen
 import com.pashurakshak.app.ui.aiInsight.AiChatScreen
 import com.pashurakshak.app.ui.aiInsight.AiInsightScreen
+import com.pashurakshak.app.ui.aiInsight.VetAiChatScreen
 import com.pashurakshak.app.ui.auth.ForgotPinScreen
 import com.pashurakshak.app.ui.auth.LoginScreen
 import com.pashurakshak.app.ui.auth.RegisterScreen
@@ -58,6 +59,7 @@ private val NoBarRoutes = setOf(
     Screen.CaseDetail.route,
     Screen.AiInsight.route,
     Screen.AiChat.route,
+    Screen.VetAiChat.route,
     Screen.B2UploadTest.route,
 )
 
@@ -271,6 +273,27 @@ fun AppNavHost(
                             launchSingleTop = true
                         }
                     },
+                    onAiChatClick = { reportId ->
+                        navController.navigate(Screen.VetAiChat.withReportId(reportId)) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable(
+                route = Screen.VetAiChat.route,
+                arguments = listOf(
+                    navArgument(Screen.VetAiChat.ARG_REPORT_ID) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                VetAiChatScreen(
+                    reportId = entry.arguments?.getString(Screen.VetAiChat.ARG_REPORT_ID)
+                        ?.takeIf { it.isNotBlank() },
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

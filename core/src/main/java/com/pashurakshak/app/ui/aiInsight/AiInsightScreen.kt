@@ -79,6 +79,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -206,6 +207,8 @@ internal fun LazyListState.snapToLatest(bottomPaddingPx: Float) {
 @Composable
 internal fun ChatTopBar(
     onBack: () -> Unit,
+    title: String = "AI Health Assistant",
+    subtitle: String = "PashuRakshak AI",
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Surface(
@@ -232,14 +235,18 @@ internal fun ChatTopBar(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "AI Health Assistant",
+                            text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "PashuRakshak AI",
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -358,6 +365,7 @@ internal fun ChatInputBar(
     onSend: () -> Unit,
     isSending: Boolean,
     modifier: Modifier = Modifier,
+    placeholder: String = "Ask about your animal's health...",
 ) {
     val canSend = inputText.isNotBlank() && !isSending
     Row(
@@ -379,7 +387,7 @@ internal fun ChatInputBar(
                 onValueChange = onInputChanged,
                 placeholder = {
                     Text(
-                        text = "Ask about your animal's health...",
+                        text = placeholder,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         fontSize = 15.sp,
                     )
@@ -456,7 +464,10 @@ internal fun CenterProgress() {
 }
 
 @Composable
-internal fun EmptyChatState() {
+internal fun EmptyChatState(
+    title: String = "Ask me anything",
+    message: String = "Get preventive care and first-aid guidance for your animals.",
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -480,14 +491,15 @@ internal fun EmptyChatState() {
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Ask me anything",
+            text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "Get preventive care and first-aid guidance for your animals.",
+            text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
